@@ -5,33 +5,71 @@ const nowISO = () => new Date().toISOString();
 const fDate = (d) => d ? new Date(d).toLocaleDateString("ko-KR") : "-";
 const fDateTime = (d) => d ? new Date(d).toLocaleString("ko-KR") : "-";
 const fMoney = (n) => n ? `₩${Number(n).toLocaleString()}원` : "-";
-const daysUntil = (d) => d ? Math.ceil((new Date(d) - new Date()) / (1000 * 60 * 60 * 24)) : null;
 
 const HW_TYPES = { desktop: "데스크탑", monitor: "모니터", laptop: "노트북" };
 const HW_STATUS = { active: "사용중", inactive: "미사용", repair: "수리중", disposed: "폐기" };
-const LIC_TYPES = { "per-seat": "사용자별 라이선스", site: "사이트 라이선스", concurrent: "동시 사용" };
+const ROLES = { admin: "관리자", user: "사용자", viewer: "조회자" };
 
 const INIT_USERS = [
-  { id: "u1", name: "김철수", dept: "개발팀", email: "kim@company.com", position: "선임개발자", createdAt: nowISO() },
-  { id: "u2", name: "이영희", dept: "디자인팀", email: "lee@company.com", position: "UI/UX 디자이너", createdAt: nowISO() },
-  { id: "u3", name: "박민준", dept: "인사팀", email: "park@company.com", position: "HR 담당자", createdAt: nowISO() },
-  { id: "u4", name: "최지원", dept: "영업팀", email: "choi@company.com", position: "영업 매니저", createdAt: nowISO() },
+  { id: "u1", name: "김철수", dept: "개발팀", email: "kim@company.com", role: "admin", createdAt: nowISO() },
+  { id: "u2", name: "이영희", dept: "디자인팀", email: "lee@company.com", role: "user", createdAt: nowISO() },
 ];
 
 const INIT_HW = [
-  { id: "h1", type: "laptop", name: "MacBook Pro 14인치", brand: "Apple", model: "MBP2023", serial: "SN-AP-001", status: "active", assignedTo: "u1", purchaseDate: "2023-01-15", warrantyEnd: "2026-01-15", cost: 2800000, notes: "개발용 고사양 노트북", createdAt: nowISO() },
-  { id: "h2", type: "monitor", name: "Dell U2722D 27인치", brand: "Dell", model: "U2722D", serial: "SN-DL-002", status: "active", assignedTo: "u1", purchaseDate: "2023-01-15", warrantyEnd: "2025-06-15", cost: 650000, notes: "4K UHD 모니터", createdAt: nowISO() },
-  { id: "h3", type: "desktop", name: "iMac 24인치", brand: "Apple", model: "iMac2022", serial: "SN-AP-003", status: "active", assignedTo: "u2", purchaseDate: "2022-06-01", warrantyEnd: "2025-06-01", cost: 2200000, notes: "디자인 작업용", createdAt: nowISO() },
+  { id: "h1", type: "laptop", name: "MacBook Pro 14인치", brand: "Apple", status: "active", assignedTo: "u1", purchaseDate: "2023-01-15", cost: 2800000, createdAt: nowISO() },
 ];
 
 const INIT_LIC = [
-  { id: "l1", name: "Microsoft 365", vendor: "Microsoft", licenseType: "per-seat", totalSeats: 10, assignedTo: ["u1","u2"], purchaseDate: "2024-01-01", expiryDate: "2025-01-01", cost: 180000, status: "active", notes: "전사 오피스", createdAt: nowISO() },
-  { id: "l2", name: "Adobe Creative Cloud", vendor: "Adobe", licenseType: "per-seat", totalSeats: 3, assignedTo: ["u2"], purchaseDate: "2024-03-01", expiryDate: "2025-03-01", cost: 72000, status: "active", notes: "디자인팀", createdAt: nowISO() },
+  { id: "l1", name: "Microsoft 365", vendor: "Microsoft", totalSeats: 10, cost: 180000, createdAt: nowISO() },
 ];
 
-const INIT_HIST = [
-  { id: "his1", ts: new Date(Date.now()-86400000*3).toISOString(), action: "자산 등록", aType: "hardware", aId: "h1", aName: "MacBook Pro", uId: "u1", uName: "김철수", detail: "신규 노트북 등록" },
-];
+// ===================== 유틸리티 함수 =====================
+function exportToCSV(data, filename) {
+  if (!data || data.length === 0) { alert("내보낼 데이터 없음"); return; }
+  const headers = Object.keys(data[0]);
+  const csv = [headers.join(","), ...data.map(row => headers.map(h => {
+    const val = row[h];
+    if (val === null || val === undefined) return "";
+    if (typeof val === "object") return JSON.stringify(val).replace(/"/g, '""');
+    return String(val).includes(",") ? `"${String(val).replace(/"/g, '""')}"` : val;
+  }).join(","))].join("\n");
+  
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `${filename}_${new Date().toISOString().split("T")[0]}.csv`;
+  link.click();
+}
+
+function importFromCSV(file, callback) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const lines = e.target.result.split("\n").filter(l => l.trim());
+      if (lines.length < 2) { alert("유효한 CSV 파일 아님"); return; }
+      
+      const headers = lines[0].split(",").map(h => h.trim());
+      const data = lines.slice(1).map(line => {
+        const obj = {};
+        let values = [];
+        let current = "";
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          if (line[i] === '"') inQuotes = !inQuotes;
+          else if (line[i] === "," && !inQuotes) { values.push(current); current = ""; }
+          else current += line[i];
+        }
+        values.push(current);
+        headers.forEach((h, i) => obj[h] = values[i]?.trim() || "");
+        return obj;
+      });
+      callback(data);
+    } catch (err) {
+      alert("CSV 읽기 오류: " + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
 
 function Modal({ title, onClose, children, width = 560 }) {
   return (
@@ -52,6 +90,7 @@ function Btn({ onClick, variant="default", children, style={}, disabled=false })
     default: { background:"#f5f5f5", color:"#333", border:"1px solid #ddd" },
     primary: { background:"#0f6e56", color:"#fff", border:"none" },
     danger: { background:"#ffebee", color:"#c62828", border:"1px solid #ffcdd2" },
+    warning: { background:"#fff3e0", color:"#e65100", border:"1px solid #ffe0b2" },
   };
   return <button onClick={onClick} disabled={disabled} style={{ padding:"8px 14px", borderRadius:6, fontSize:12, fontWeight:500, cursor:disabled?"not-allowed":"pointer", opacity:disabled?0.5:1, ...styles[variant], ...style }}>{children}</button>;
 }
@@ -83,35 +122,19 @@ function Table({ cols, rows, empty="데이터 없음" }) {
   );
 }
 
-function exportToCSV(data, filename) {
-  if (!data || data.length === 0) { alert("데이터가 없습니다."); return; }
-  const headers = Object.keys(data[0]);
-  const csv = [headers.join(","), ...data.map(row => headers.map(h => {
-    const val = row[h];
-    if (val === null || val === undefined) return "";
-    if (typeof val === "object") return JSON.stringify(val).replace(/"/g, '""');
-    return String(val).includes(",") ? `"${String(val).replace(/"/g, '""')}"` : val;
-  }).join(","))].join("\n");
-  
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = `${filename}_${new Date().toISOString().split("T")[0]}.csv`;
-  link.click();
-}
-
 // ===================== HARDWARE PAGE =====================
-function HardwarePage({ hardware, users, setHardware, addHistory }) {
+function HardwarePage({ hardware, users, setHardware, trash, setTrash, addHistory, canEdit }) {
   const [modal, setModal] = useState(null);
   const [filter, setFilter] = useState({ type:"", status:"", search:"" });
   const [form, setForm] = useState({});
+  const [importModal, setImportModal] = useState(false);
 
   const filtered = hardware.filter(h => {
     if (filter.type && h.type !== filter.type) return false;
     if (filter.status && h.status !== filter.status) return false;
     if (filter.search) {
       const q = filter.search.toLowerCase();
-      return h.name.toLowerCase().includes(q) || h.serial?.toLowerCase().includes(q);
+      return h.name.toLowerCase().includes(q) || h.brand?.toLowerCase().includes(q);
     }
     return true;
   });
@@ -121,25 +144,36 @@ function HardwarePage({ hardware, users, setHardware, addHistory }) {
     if (modal === "add") {
       const newHw = { ...form, id: genId(), createdAt: nowISO() };
       setHardware(prev => [newHw, ...prev]);
-      addHistory("자산 등록", "hardware", newHw.id, newHw.name, form.assignedTo, "신규 자산 등록");
+      addHistory("자산 등록", "hardware", newHw.id, newHw.name, "신규");
     } else {
       setHardware(prev => prev.map(h => h.id===form.id ? form : h));
-      addHistory("자산 수정", "hardware", form.id, form.name, null, "자산 정보 수정");
+      addHistory("자산 수정", "hardware", form.id, form.name, "수정됨");
     }
     setModal(null);
   };
 
+  const importCSV = (data) => {
+    let count = 0;
+    data.forEach(row => {
+      if (row.name?.trim()) {
+        const newHw = { ...row, id: genId(), status: row.status || "active", createdAt: nowISO() };
+        setHardware(prev => [newHw, ...prev]);
+        count++;
+      }
+    });
+    alert(`${count}개 자산 등록됨`);
+    setImportModal(false);
+  };
+
   const cols = [
-    { label:"자산명", render: h => <span><strong>{h.name}</strong></span> },
-    { label:"유형", render: h => HW_TYPES[h.type] || h.type },
-    { label:"브랜드", render: h => h.brand },
+    { label:"자산명", render: h => <strong>{h.name}</strong> },
+    { label:"유형", render: h => HW_TYPES[h.type] || "-" },
     { label:"상태", render: h => <span style={{ padding:"2px 8px", background:h.status==="active"?"#e8f5e9":"#f5f5f5", borderRadius:4, fontSize:11 }}>{HW_STATUS[h.status]}</span> },
-    { label:"사용자", render: h => { const u = users.find(x=>x.id===h.assignedTo); return u ? u.name : "미배정"; } },
     { label:"비용", render: h => fMoney(h.cost) },
     { label:"", render: h => (
       <div style={{ display:"flex", gap:4 }}>
-        <Btn onClick={()=>{setForm(h); setModal("edit");}} variant="default" style={{fontSize:11}}>수정</Btn>
-        <Btn onClick={()=>{setHardware(p=>p.filter(x=>x.id!==h.id)); addHistory("자산 삭제", "hardware", h.id, h.name, null, "삭제됨");}} variant="danger" style={{fontSize:11}}>삭제</Btn>
+        {canEdit && <Btn onClick={()=>{setForm(h); setModal("edit");}} variant="default" style={{fontSize:11}}>수정</Btn>}
+        {canEdit && <Btn onClick={()=>{setHardware(p=>p.filter(x=>x.id!==h.id)); setTrash(t=>[{...h, type:"hardware", deletedAt: nowISO()}, ...t]); addHistory("자산 삭제", "hardware", h.id, h.name, "삭제됨");}} variant="danger" style={{fontSize:11}}>삭제</Btn>}
       </div>
     )},
   ];
@@ -149,8 +183,9 @@ function HardwarePage({ hardware, users, setHardware, addHistory }) {
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
         <h2 style={{ margin:0 }}>하드웨어 관리</h2>
         <div style={{display:"flex", gap:8}}>
-          <Btn onClick={()=>exportToCSV(filtered, "하드웨어")} variant="default">CSV</Btn>
-          <Btn onClick={()=>{setForm({status:"active"}); setModal("add");}} variant="primary">+ 등록</Btn>
+          <Btn onClick={()=>exportToCSV(filtered, "하드웨어")} variant="default">CSV 내보내기</Btn>
+          {canEdit && <Btn onClick={()=>setImportModal(true)} variant="primary">📥 CSV 가져오기</Btn>}
+          {canEdit && <Btn onClick={()=>{setForm({status:"active"}); setModal("add");}} variant="primary">+ 등록</Btn>}
         </div>
       </div>
 
@@ -160,23 +195,34 @@ function HardwarePage({ hardware, users, setHardware, addHistory }) {
           <option value="">전체 유형</option>
           {Object.entries(HW_TYPES).map(([k,v])=><option key={k} value={k}>{v}</option>)}
         </select>
-        <select value={filter.status} onChange={e=>setFilter(f=>({...f,status:e.target.value}))} style={{ padding:"8px", border:"1px solid #ddd", borderRadius:6 }}>
-          <option value="">전체 상태</option>
-          {Object.entries(HW_STATUS).map(([k,v])=><option key={k} value={k}>{v}</option>)}
-        </select>
       </div>
 
       <Table cols={cols} rows={filtered} empty="하드웨어 없음" />
 
-      {modal && (
+      {importModal && (
+        <Modal title="CSV 파일로 대량 등록" onClose={()=>setImportModal(false)}>
+          <div style={{marginBottom:16}}>
+            <label style={{display:"block", marginBottom:8}}>CSV 파일 선택:</label>
+            <input type="file" accept=".csv" onChange={(e)=>{ if(e.target.files[0]) importFromCSV(e.target.files[0], importCSV); }} style={{padding:8, border:"1px solid #ddd", borderRadius:6, width:"100%", boxSizing:"border-box"}} />
+          </div>
+          <div style={{fontSize:12, color:"#666", marginBottom:12}}>
+            필수 컬럼: name, type, brand, status, cost<br/>
+            예: MacBook Pro, laptop, Apple, active, 2800000
+          </div>
+          <div style={{display:"flex", justifyContent:"flex-end", gap:8}}>
+            <Btn onClick={()=>setImportModal(false)}>취소</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {modal && canEdit && (
         <Modal title={modal==="add"?"자산 등록":"자산 수정"} onClose={()=>setModal(null)}>
           <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:12}}>
-            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>자산명 *</label><input value={form.name||""} onChange={e=>setForm(f=>({...f,name:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4}} /></div>
-            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>유형</label><select value={form.type||""} onChange={e=>setForm(f=>({...f,type:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4}}><option value="">선택</option>{Object.entries(HW_TYPES).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></div>
-            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>브랜드</label><input value={form.brand||""} onChange={e=>setForm(f=>({...f,brand:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4}} /></div>
-            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>모델</label><input value={form.model||""} onChange={e=>setForm(f=>({...f,model:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4}} /></div>
-            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>구매비용</label><input type="number" value={form.cost||""} onChange={e=>setForm(f=>({...f,cost:Number(e.target.value)}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4}} /></div>
-            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>상태</label><select value={form.status||"active"} onChange={e=>setForm(f=>({...f,status:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4}}>{Object.entries(HW_STATUS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></div>
+            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>자산명 *</label><input value={form.name||""} onChange={e=>setForm(f=>({...f,name:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4, boxSizing:"border-box"}} /></div>
+            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>유형</label><select value={form.type||""} onChange={e=>setForm(f=>({...f,type:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4, boxSizing:"border-box"}}><option value="">선택</option>{Object.entries(HW_TYPES).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></div>
+            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>브랜드</label><input value={form.brand||""} onChange={e=>setForm(f=>({...f,brand:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4, boxSizing:"border-box"}} /></div>
+            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>상태</label><select value={form.status||"active"} onChange={e=>setForm(f=>({...f,status:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4, boxSizing:"border-box"}}>{Object.entries(HW_STATUS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></div>
+            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>비용</label><input type="number" value={form.cost||""} onChange={e=>setForm(f=>({...f,cost:Number(e.target.value)}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4, boxSizing:"border-box"}} /></div>
           </div>
           <div style={{display:"flex", justifyContent:"flex-end", gap:8, marginTop:16}}>
             <Btn onClick={()=>setModal(null)}>취소</Btn>
@@ -188,65 +234,103 @@ function HardwarePage({ hardware, users, setHardware, addHistory }) {
   );
 }
 
-// ===================== LICENSE PAGE =====================
-function LicensePage({ licenses, users, setLicenses, addHistory }) {
-  const [modal, setModal] = useState(null);
-  const [form, setForm] = useState({});
+// ===================== TRASH PAGE =====================
+function TrashPage({ trash, setTrash, hardware, setHardware, licenses, setLicenses, users, setUsers, addHistory, canEdit }) {
+  const [expandType, setExpandType] = useState(null);
 
-  const save = () => {
-    if (!form.name?.trim()) return alert("라이선스명 입력필수");
-    if (modal === "add") {
-      const newL = { ...form, id: genId(), assignedTo: [], createdAt: nowISO() };
-      setLicenses(prev => [newL, ...prev]);
-      addHistory("라이선스 등록", "license", newL.id, newL.name, null, "신규 라이선스");
-    } else {
-      setLicenses(prev => prev.map(l => l.id===form.id ? form : l));
-      addHistory("라이선스 수정", "license", form.id, form.name, null, "수정됨");
+  const restore = (item) => {
+    if (item.type === "hardware") {
+      setHardware(prev => [item, ...prev]);
+      setTrash(t => t.filter(x => x.id !== item.id));
+      addHistory("자산 복구", "hardware", item.id, item.name, "휴지통에서 복구");
+    } else if (item.type === "license") {
+      setLicenses(prev => [item, ...prev]);
+      setTrash(t => t.filter(x => x.id !== item.id));
+      addHistory("라이선스 복구", "license", item.id, item.name, "휴지통에서 복구");
+    } else if (item.type === "user") {
+      setUsers(prev => [item, ...prev]);
+      setTrash(t => t.filter(x => x.id !== item.id));
+      addHistory("사용자 복구", "user", item.id, item.name, "휴지통에서 복구");
     }
-    setModal(null);
   };
 
-  const cols = [
-    { label:"소프트웨어", render: l => <strong>{l.name}</strong> },
-    { label:"공급사", render: l => l.vendor },
-    { label:"유형", render: l => LIC_TYPES[l.licenseType] },
-    { label:"좌석", render: l => `${l.assignedTo?.length||0}/${l.totalSeats}` },
-    { label:"만료일", render: l => fDate(l.expiryDate) },
-    { label:"비용", render: l => fMoney(l.cost) },
-    { label:"", render: l => (
-      <div style={{display:"flex", gap:4}}>
-        <Btn onClick={()=>{setForm(l); setModal("edit");}} variant="default" style={{fontSize:11}}>수정</Btn>
-        <Btn onClick={()=>{setLicenses(p=>p.filter(x=>x.id!==l.id)); addHistory("라이선스 삭제", "license", l.id, l.name, null, "삭제됨");}} variant="danger" style={{fontSize:11}}>삭제</Btn>
-      </div>
-    )},
-  ];
+  const hardwareTrash = trash.filter(t => t.type === "hardware");
+  const licenseTrash = trash.filter(t => t.type === "license");
+  const userTrash = trash.filter(t => t.type === "user");
 
   return (
     <div style={{ padding:"20px" }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-        <h2 style={{ margin:0 }}>라이선스 관리</h2>
-        <div style={{display:"flex", gap:8}}>
-          <Btn onClick={()=>exportToCSV(licenses, "라이선스")} variant="default">CSV</Btn>
-          <Btn onClick={()=>{setForm({licenseType:"per-seat", totalSeats:1, status:"active"}); setModal("add");}} variant="primary">+ 등록</Btn>
-        </div>
-      </div>
-      <Table cols={cols} rows={licenses} empty="라이선스 없음" />
+      <h2 style={{ margin:"0 0 16px" }}>🗑️ 휴지통</h2>
 
-      {modal && (
-        <Modal title={modal==="add"?"라이선스 등록":"라이선스 수정"} onClose={()=>setModal(null)}>
-          <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:12}}>
-            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>소프트웨어명 *</label><input value={form.name||""} onChange={e=>setForm(f=>({...f,name:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4}} /></div>
-            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>공급사</label><input value={form.vendor||""} onChange={e=>setForm(f=>({...f,vendor:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4}} /></div>
-            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>좌석수</label><input type="number" value={form.totalSeats||1} onChange={e=>setForm(f=>({...f,totalSeats:Number(e.target.value)}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4}} /></div>
-            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>비용</label><input type="number" value={form.cost||""} onChange={e=>setForm(f=>({...f,cost:Number(e.target.value)}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4}} /></div>
-            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>구매일</label><input type="date" value={form.purchaseDate||""} onChange={e=>setForm(f=>({...f,purchaseDate:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4}} /></div>
-            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>만료일</label><input type="date" value={form.expiryDate||""} onChange={e=>setForm(f=>({...f,expiryDate:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4}} /></div>
-          </div>
-          <div style={{display:"flex", justifyContent:"flex-end", gap:8, marginTop:16}}>
-            <Btn onClick={()=>setModal(null)}>취소</Btn>
-            <Btn onClick={save} variant="primary">저장</Btn>
-          </div>
-        </Modal>
+      {trash.length === 0 ? (
+        <div style={{ background:"#fff", border:"1px solid #e0e0e0", padding:20, borderRadius:8, textAlign:"center", color:"#999" }}>
+          휴지통이 비어있습니다.
+        </div>
+      ) : (
+        <>
+          {hardwareTrash.length > 0 && (
+            <div style={{ background:"#fff", border:"1px solid #e0e0e0", borderRadius:8, marginBottom:16, padding:16 }}>
+              <h3 style={{ margin:"0 0 12px", cursor:"pointer", userSelect:"none" }} onClick={()=>setExpandType(expandType==="hw"?null:"hw")}>
+                📦 하드웨어 ({hardwareTrash.length})
+              </h3>
+              {expandType === "hw" && (
+                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                  {hardwareTrash.map(item => (
+                    <div key={item.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:12, background:"#fafafa", borderRadius:6 }}>
+                      <div>
+                        <div style={{fontWeight:500}}>{item.name}</div>
+                        <div style={{fontSize:11, color:"#999"}}>삭제됨: {fDateTime(item.deletedAt)}</div>
+                      </div>
+                      {canEdit && <Btn onClick={()=>restore(item)} variant="warning" style={{fontSize:11}}>복구</Btn>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {licenseTrash.length > 0 && (
+            <div style={{ background:"#fff", border:"1px solid #e0e0e0", borderRadius:8, marginBottom:16, padding:16 }}>
+              <h3 style={{ margin:"0 0 12px", cursor:"pointer", userSelect:"none" }} onClick={()=>setExpandType(expandType==="lic"?null:"lic")}>
+                📋 라이선스 ({licenseTrash.length})
+              </h3>
+              {expandType === "lic" && (
+                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                  {licenseTrash.map(item => (
+                    <div key={item.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:12, background:"#fafafa", borderRadius:6 }}>
+                      <div>
+                        <div style={{fontWeight:500}}>{item.name}</div>
+                        <div style={{fontSize:11, color:"#999"}}>삭제됨: {fDateTime(item.deletedAt)}</div>
+                      </div>
+                      {canEdit && <Btn onClick={()=>restore(item)} variant="warning" style={{fontSize:11}}>복구</Btn>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {userTrash.length > 0 && (
+            <div style={{ background:"#fff", border:"1px solid #e0e0e0", borderRadius:8, padding:16 }}>
+              <h3 style={{ margin:"0 0 12px", cursor:"pointer", userSelect:"none" }} onClick={()=>setExpandType(expandType==="user"?null:"user")}>
+                👤 사용자 ({userTrash.length})
+              </h3>
+              {expandType === "user" && (
+                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                  {userTrash.map(item => (
+                    <div key={item.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:12, background:"#fafafa", borderRadius:6 }}>
+                      <div>
+                        <div style={{fontWeight:500}}>{item.name}</div>
+                        <div style={{fontSize:11, color:"#999"}}>삭제됨: {fDateTime(item.deletedAt)}</div>
+                      </div>
+                      {canEdit && <Btn onClick={()=>restore(item)} variant="warning" style={{fontSize:11}}>복구</Btn>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -277,7 +361,7 @@ function HistoryPage({ history }) {
     { label:"액션", render: h => h.action },
     { label:"자산", render: h => h.aName },
     { label:"유형", render: h => h.aType },
-    { label:"담당자", render: h => h.uName },
+    { label:"내용", render: h => <span style={{fontSize:11}}>{h.detail}</span> },
   ];
 
   return (
@@ -309,42 +393,323 @@ function HistoryPage({ history }) {
   );
 }
 
+// ===================== LICENSE PAGE =====================
+function LicensePage({ licenses, setLicenses, trash, setTrash, addHistory, canEdit }) {
+  const [modal, setModal] = useState(null);
+  const [filter, setFilter] = useState({ search:"" });
+  const [form, setForm] = useState({});
+  const [importModal, setImportModal] = useState(false);
+
+  const filtered = licenses.filter(l => {
+    if (filter.search) {
+      const q = filter.search.toLowerCase();
+      return l.name.toLowerCase().includes(q) || l.vendor?.toLowerCase().includes(q);
+    }
+    return true;
+  });
+
+  const save = () => {
+    if (!form.name?.trim()) return alert("라이선스명 입력필수");
+    if (modal === "add") {
+      const newL = { ...form, id: genId(), createdAt: nowISO() };
+      setLicenses(prev => [newL, ...prev]);
+      addHistory("라이선스 등록", "license", newL.id, newL.name, "등록됨");
+    } else {
+      setLicenses(prev => prev.map(l => l.id===form.id ? form : l));
+      addHistory("라이선스 수정", "license", form.id, form.name, "수정됨");
+    }
+    setModal(null);
+  };
+
+  const importCSV = (data) => {
+    let count = 0;
+    data.forEach(row => {
+      if (row.name?.trim()) {
+        const newL = { ...row, id: genId(), createdAt: nowISO() };
+        setLicenses(prev => [newL, ...prev]);
+        count++;
+      }
+    });
+    alert(`${count}개 라이선스 등록됨`);
+    setImportModal(false);
+  };
+
+  const cols = [
+    { label:"라이선스명", render: l => <strong>{l.name}</strong> },
+    { label:"공급사", render: l => l.vendor },
+    { label:"좌석", render: l => l.totalSeats || "-" },
+    { label:"만료일", render: l => fDate(l.expiryDate) },
+    { label:"비용", render: l => fMoney(l.cost) },
+    { label:"", render: l => (
+      <div style={{ display:"flex", gap:4 }}>
+        {canEdit && <Btn onClick={()=>{setForm(l); setModal("edit");}} variant="default" style={{fontSize:11}}>수정</Btn>}
+        {canEdit && <Btn onClick={()=>{setLicenses(p=>p.filter(x=>x.id!==l.id)); setTrash(t=>[{...l, type:"license", deletedAt:nowISO()}, ...t]); addHistory("라이선스 삭제", "license", l.id, l.name, "삭제됨");}} variant="danger" style={{fontSize:11}}>삭제</Btn>}
+      </div>
+    )},
+  ];
+
+  return (
+    <div style={{ padding:"20px" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+        <h2 style={{ margin:0 }}>라이선스 관리</h2>
+        <div style={{display:"flex", gap:8}}>
+          <Btn onClick={()=>exportToCSV(filtered, "라이선스")} variant="default">CSV 내보내기</Btn>
+          {canEdit && <Btn onClick={()=>setImportModal(true)} variant="primary">📥 CSV 가져오기</Btn>}
+          {canEdit && <Btn onClick={()=>{setForm({}); setModal("add");}} variant="primary">+ 등록</Btn>}
+        </div>
+      </div>
+
+      <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+        <input placeholder="검색" value={filter.search} onChange={e=>setFilter(f=>({...f,search:e.target.value}))} style={{ flex:1, padding:"8px", border:"1px solid #ddd", borderRadius:6 }} />
+      </div>
+
+      <Table cols={cols} rows={filtered} empty="라이선스 없음" />
+
+      {importModal && (
+        <Modal title="CSV 파일로 대량 등록" onClose={()=>setImportModal(false)}>
+          <div style={{marginBottom:16}}>
+            <label style={{display:"block", marginBottom:8}}>CSV 파일 선택:</label>
+            <input type="file" accept=".csv" onChange={(e)=>{ if(e.target.files[0]) importFromCSV(e.target.files[0], importCSV); }} style={{padding:8, border:"1px solid #ddd", borderRadius:6, width:"100%", boxSizing:"border-box"}} />
+          </div>
+          <div style={{fontSize:12, color:"#666", marginBottom:12}}>
+            필수 컬럼: name, vendor, cost
+          </div>
+          <div style={{display:"flex", justifyContent:"flex-end", gap:8}}>
+            <Btn onClick={()=>setImportModal(false)}>취소</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {modal && canEdit && (
+        <Modal title={modal==="add"?"라이선스 등록":"라이선스 수정"} onClose={()=>setModal(null)}>
+          <div style={{display:"flex", flexDirection:"column", gap:12}}>
+            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>라이선스명 *</label><input value={form.name||""} onChange={e=>setForm(f=>({...f,name:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4, boxSizing:"border-box"}} /></div>
+            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>공급사</label><input value={form.vendor||""} onChange={e=>setForm(f=>({...f,vendor:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4, boxSizing:"border-box"}} /></div>
+            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>좌석 수</label><input type="number" value={form.totalSeats||""} onChange={e=>setForm(f=>({...f,totalSeats:Number(e.target.value)}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4, boxSizing:"border-box"}} /></div>
+            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>비용</label><input type="number" value={form.cost||""} onChange={e=>setForm(f=>({...f,cost:Number(e.target.value)}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4, boxSizing:"border-box"}} /></div>
+            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>만료일</label><input type="date" value={form.expiryDate||""} onChange={e=>setForm(f=>({...f,expiryDate:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4, boxSizing:"border-box"}} /></div>
+          </div>
+          <div style={{display:"flex", justifyContent:"flex-end", gap:8, marginTop:16}}>
+            <Btn onClick={()=>setModal(null)}>취소</Btn>
+            <Btn onClick={save} variant="primary">저장</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ===================== REPORTS PAGE =====================
+function ReportsPage({ hardware, licenses, users, history }) {
+  const [reportType, setReportType] = useState("overview");
+
+  const stats = {
+    totalHw: hardware.length,
+    activeHw: hardware.filter(h=>h.status==="active").length,
+    totalCost: hardware.reduce((s,h)=>s+(h.cost||0), 0) + licenses.reduce((s,l)=>s+(l.cost||0), 0),
+    totalLic: licenses.length,
+    totalUsers: users.length,
+  };
+
+  const hwByType = {};
+  Object.keys(HW_TYPES).forEach(k => hwByType[k] = hardware.filter(h=>h.type===k).length);
+
+  const historyByAction = {};
+  history.forEach(h => historyByAction[h.action] = (historyByAction[h.action]||0) + 1);
+
+  return (
+    <div style={{ padding:"20px" }}>
+      <h2 style={{ margin:"0 0 16px" }}>📊 보고서</h2>
+
+      <div style={{display:"flex", gap:8, marginBottom:16}}>
+        {[
+          {id:"overview", label:"📈 개요"},
+          {id:"hardware", label:"🖥️ 하드웨어"},
+          {id:"cost", label:"💰 비용분석"},
+          {id:"activity", label:"📝 활동현황"},
+        ].map(r => (
+          <Btn key={r.id} onClick={()=>setReportType(r.id)} variant={reportType===r.id?"primary":"default"}>{r.label}</Btn>
+        ))}
+      </div>
+
+      {reportType === "overview" && (
+        <div style={{display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12}}>
+          {[
+            {label:"전체 자산", value:stats.totalHw, color:"#0f6e56"},
+            {label:"활성 자산", value:stats.activeHw, color:"#1d9e75"},
+            {label:"라이선스", value:stats.totalLic, color:"#1565c0"},
+            {label:"사용자", value:stats.totalUsers, color:"#6a1b9a"},
+          ].map((s,i) => (
+            <div key={i} style={{background:"#fff", border:"1px solid #e0e0e0", padding:16, borderRadius:8}}>
+              <div style={{fontSize:12, color:"#666", marginBottom:8}}>{s.label}</div>
+              <div style={{fontSize:28, fontWeight:600, color:s.color}}>{s.value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {reportType === "hardware" && (
+        <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:16}}>
+          <div style={{background:"#fff", border:"1px solid #e0e0e0", padding:16, borderRadius:8}}>
+            <h3 style={{margin:"0 0 12px"}}>유형별 분포</h3>
+            {Object.entries(hwByType).map(([type,count]) => (
+              <div key={type} style={{display:"flex", alignItems:"center", gap:8, marginBottom:12}}>
+                <span style={{flex:1}}>{HW_TYPES[type]}</span>
+                <div style={{width:100, height:8, background:"#f0f0f0", borderRadius:4, overflow:"hidden"}}>
+                  <div style={{width:`${count*20}px`, height:8, background:"#0f6e56"}}></div>
+                </div>
+                <span style={{width:30, textAlign:"right", fontWeight:500}}>{count}</span>
+              </div>
+            ))}
+          </div>
+
+          <div style={{background:"#fff", border:"1px solid #e0e0e0", padding:16, borderRadius:8}}>
+            <h3 style={{margin:"0 0 12px"}}>상태별 분포</h3>
+            {Object.entries(HW_STATUS).map(([status,label]) => {
+              const cnt = hardware.filter(h=>h.status===status).length;
+              return (
+                <div key={status} style={{display:"flex", alignItems:"center", gap:8, marginBottom:12}}>
+                  <span style={{flex:1}}>{label}</span>
+                  <div style={{width:100, height:8, background:"#f0f0f0", borderRadius:4, overflow:"hidden"}}>
+                    <div style={{width:`${cnt*20}px`, height:8, background:status==="active"?"#4caf50":status==="repair"?"#ff9800":"#9e9e9e"}}></div>
+                  </div>
+                  <span style={{width:30, textAlign:"right", fontWeight:500}}>{cnt}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {reportType === "cost" && (
+        <div style={{background:"#fff", border:"1px solid #e0e0e0", padding:16, borderRadius:8}}>
+          <h3 style={{margin:"0 0 16px"}}>예산 분석</h3>
+          <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:16}}>
+            <div>
+              <div style={{fontSize:12, color:"#666", marginBottom:4}}>하드웨어 총 비용</div>
+              <div style={{fontSize:24, fontWeight:600, color:"#0f6e56"}}>{fMoney(hardware.reduce((s,h)=>s+(h.cost||0), 0))}</div>
+            </div>
+            <div>
+              <div style={{fontSize:12, color:"#666", marginBottom:4}}>라이선스 총 비용</div>
+              <div style={{fontSize:24, fontWeight:600, color:"#1565c0"}}>{fMoney(licenses.reduce((s,l)=>s+(l.cost||0), 0))}</div>
+            </div>
+            <div style={{gridColumn:"1/-1"}}>
+              <div style={{fontSize:12, color:"#666", marginBottom:4}}>전체 IT 비용</div>
+              <div style={{fontSize:28, fontWeight:700, color:"#333"}}>{fMoney(stats.totalCost)}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reportType === "activity" && (
+        <div style={{background:"#fff", border:"1px solid #e0e0e0", padding:16, borderRadius:8}}>
+          <h3 style={{margin:"0 0 16px"}}>액션별 활동현황</h3>
+          {Object.entries(historyByAction).map(([action,count]) => (
+            <div key={action} style={{display:"flex", alignItems:"center", gap:8, marginBottom:12}}>
+              <span style={{flex:1, fontSize:12}}>{action}</span>
+              <div style={{width:150, height:8, background:"#f0f0f0", borderRadius:4, overflow:"hidden"}}>
+                <div style={{width:`${Math.min(count*10, 150)}px`, height:8, background:"#0f6e56"}}></div>
+              </div>
+              <span style={{width:40, textAlign:"right", fontWeight:500}}>{count}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===================== USERS PAGE =====================
+function UsersPage({ users, setUsers, trash, setTrash, addHistory, canEdit, currentUser }) {
+  const [modal, setModal] = useState(null);
+  const [form, setForm] = useState({});
+
+  const save = () => {
+    if (!form.name?.trim()) return alert("이름 입력필수");
+    if (modal === "add") {
+      const newUser = { ...form, id: genId(), createdAt: nowISO() };
+      setUsers(prev => [newUser, ...prev]);
+      addHistory("사용자 등록", "user", newUser.id, newUser.name, "등록됨");
+    } else {
+      setUsers(prev => prev.map(u => u.id===form.id ? form : u));
+      addHistory("사용자 수정", "user", form.id, form.name, "수정됨");
+    }
+    setModal(null);
+  };
+
+  const cols = [
+    { label:"이름", render: u => <strong>{u.name}</strong> },
+    { label:"이메일", render: u => u.email },
+    { label:"부서", render: u => u.dept },
+    { label:"역할", render: u => <span style={{padding:"2px 8px", background:u.role==="admin"?"#ffebee":"#f5f5f5", borderRadius:4, fontSize:11}}>{ROLES[u.role]}</span> },
+    { label:"", render: u => (
+      <div style={{display:"flex", gap:4}}>
+        {(canEdit || currentUser.id === u.id) && <Btn onClick={()=>{setForm(u); setModal("edit");}} variant="default" style={{fontSize:11}}>수정</Btn>}
+        {canEdit && currentUser.id !== u.id && <Btn onClick={()=>{setUsers(p=>p.filter(x=>x.id!==u.id)); setTrash(t=>[{...u, type:"user", deletedAt:nowISO()}, ...t]); addHistory("사용자 삭제", "user", u.id, u.name, "삭제됨");}} variant="danger" style={{fontSize:11}}>삭제</Btn>}
+      </div>
+    )},
+  ];
+
+  return (
+    <div style={{ padding:"20px" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+        <h2 style={{ margin:0 }}>사용자 관리</h2>
+        {canEdit && <Btn onClick={()=>{setForm({role:"user"}); setModal("add");}} variant="primary">+ 추가</Btn>}
+      </div>
+
+      <Table cols={cols} rows={users} empty="사용자 없음" />
+
+      {modal && (
+        <Modal title={modal==="add"?"사용자 추가":"사용자 수정"} onClose={()=>setModal(null)}>
+          <div style={{display:"flex", flexDirection:"column", gap:12}}>
+            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>이름 *</label><input value={form.name||""} onChange={e=>setForm(f=>({...f,name:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4, boxSizing:"border-box"}} /></div>
+            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>이메일</label><input value={form.email||""} onChange={e=>setForm(f=>({...f,email:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4, boxSizing:"border-box"}} /></div>
+            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>부서</label><input value={form.dept||""} onChange={e=>setForm(f=>({...f,dept:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4, boxSizing:"border-box"}} /></div>
+            {canEdit && <div><label style={{display:"block", marginBottom:4, fontSize:12}}>역할</label><select value={form.role||"user"} onChange={e=>setForm(f=>({...f,role:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4, boxSizing:"border-box"}}>{Object.entries(ROLES).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></div>}
+          </div>
+          <div style={{display:"flex", justifyContent:"flex-end", gap:8, marginTop:16}}>
+            <Btn onClick={()=>setModal(null)}>취소</Btn>
+            <Btn onClick={save} variant="primary">저장</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 // ===================== DASHBOARD =====================
-function Dashboard({ stats, hardware, licenses, history, setView }) {
+function Dashboard({ stats, hardware, history }) {
   return (
     <div style={{ padding:"20px" }}>
       <h2 style={{ margin:"0 0 16px" }}>대시보드</h2>
 
       <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:20 }}>
         <div style={{ background:"#fff", border:"1px solid #e0e0e0", padding:16, borderRadius:8 }}>
-          <div style={{fontSize:12, color:"#666", marginBottom:4}}>전체 하드웨어</div>
-          <div style={{fontSize:24, fontWeight:600}}>{stats.totalHw}</div>
+          <div style={{fontSize:12, color:"#666", marginBottom:4}}>전체 자산</div>
+          <div style={{fontSize:28, fontWeight:600}}>{stats.totalHw}</div>
         </div>
         <div style={{ background:"#fff", border:"1px solid #e0e0e0", padding:16, borderRadius:8 }}>
           <div style={{fontSize:12, color:"#666", marginBottom:4}}>활성</div>
-          <div style={{fontSize:24, fontWeight:600}}>{stats.activeHw}</div>
+          <div style={{fontSize:28, fontWeight:600}}>{stats.activeHw}</div>
         </div>
         <div style={{ background:"#fff", border:"1px solid #e0e0e0", padding:16, borderRadius:8 }}>
           <div style={{fontSize:12, color:"#666", marginBottom:4}}>라이선스</div>
-          <div style={{fontSize:24, fontWeight:600}}>{stats.totalLic}</div>
+          <div style={{fontSize:28, fontWeight:600}}>{stats.totalLic}</div>
         </div>
         <div style={{ background:"#fff", border:"1px solid #e0e0e0", padding:16, borderRadius:8 }}>
           <div style={{fontSize:12, color:"#666", marginBottom:4}}>사용자</div>
-          <div style={{fontSize:24, fontWeight:600}}>{stats.totalUsers}</div>
+          <div style={{fontSize:28, fontWeight:600}}>{stats.totalUsers}</div>
         </div>
       </div>
 
-      <div style={{ background:"#fff", border:"1px solid #e0e0e0", padding:16, borderRadius:8, marginBottom:16 }}>
-        <h3 style={{ margin:"0 0 12px", fontSize:14 }}>최근 로그</h3>
-        <div style={{display:"flex", flexDirection:"column", gap:8}}>
-          {history.slice(0,5).map(h => (
-            <div key={h.id} style={{display:"flex", justifyContent:"space-between", padding:8, background:"#f9f9f9", borderRadius:4, fontSize:12}}>
-              <span><strong>{h.action}</strong> - {h.aName}</span>
-              <span style={{color:"#999"}}>{fDateTime(h.ts)}</span>
-            </div>
-          ))}
-        </div>
-        <button onClick={()=>setView("history")} style={{marginTop:12, color:"#0f6e56", background:"none", border:"none", cursor:"pointer", fontWeight:500}}>모두 보기 →</button>
+      <div style={{ background:"#fff", border:"1px solid #e0e0e0", padding:16, borderRadius:8 }}>
+        <h3 style={{ margin:"0 0 12px" }}>최근 로그</h3>
+        {history.slice(0,8).map(h => (
+          <div key={h.id} style={{display:"flex", justifyContent:"space-between", padding:8, fontSize:12, borderBottom:"1px solid #f0f0f0"}}>
+            <span><strong>{h.action}</strong> - {h.aName}</span>
+            <span style={{color:"#999"}}>{fDateTime(h.ts)}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -353,14 +718,40 @@ function Dashboard({ stats, hardware, licenses, history, setView }) {
 // ===================== MAIN APP =====================
 export default function App() {
   const [view, setView] = useState("dashboard");
-  const [hardware, setHardware] = useState(INIT_HW);
-  const [licenses, setLicenses] = useState(INIT_LIC);
-  const [users, setUsers] = useState(INIT_USERS);
-  const [history, setHistory] = useState(INIT_HIST);
+  const [hardware, setHardware] = useState(() => {
+    const saved = localStorage.getItem("itam-hw");
+    return saved ? JSON.parse(saved) : INIT_HW;
+  });
+  const [licenses, setLicenses] = useState(() => {
+    const saved = localStorage.getItem("itam-lic");
+    return saved ? JSON.parse(saved) : INIT_LIC;
+  });
+  const [users, setUsers] = useState(() => {
+    const saved = localStorage.getItem("itam-users");
+    return saved ? JSON.parse(saved) : INIT_USERS;
+  });
+  const [history, setHistory] = useState(() => {
+    const saved = localStorage.getItem("itam-hist");
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [trash, setTrash] = useState(() => {
+    const saved = localStorage.getItem("itam-trash");
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [currentUser, setCurrentUser] = useState(users[0] || INIT_USERS[0]);
+  const [loginModal, setLoginModal] = useState(!currentUser);
 
-  const addHistory = useCallback((action, aType, aId, aName, uId, detail) => {
-    setHistory(prev => [{ id:genId(), ts:nowISO(), action, aType, aId, aName, uId, uName:users.find(x=>x.id===uId)?.name||"시스템", detail }, ...prev]);
-  }, [users]);
+  useEffect(() => { localStorage.setItem("itam-hw", JSON.stringify(hardware)); }, [hardware]);
+  useEffect(() => { localStorage.setItem("itam-lic", JSON.stringify(licenses)); }, [licenses]);
+  useEffect(() => { localStorage.setItem("itam-users", JSON.stringify(users)); }, [users]);
+  useEffect(() => { localStorage.setItem("itam-hist", JSON.stringify(history)); }, [history]);
+  useEffect(() => { localStorage.setItem("itam-trash", JSON.stringify(trash)); }, [trash]);
+
+  const addHistory = useCallback((action, aType, aId, aName, detail) => {
+    setHistory(prev => [{ id:genId(), ts:nowISO(), action, aType, aId, aName, detail, userId:currentUser.id }, ...prev]);
+  }, [currentUser]);
+
+  const canEdit = currentUser?.role === "admin" || currentUser?.role === "user";
 
   const stats = {
     totalHw: hardware.length,
@@ -370,33 +761,55 @@ export default function App() {
   };
 
   const nav = [
-    { id:"dashboard", label:"대시보드" },
-    { id:"hardware", label:"하드웨어" },
-    { id:"license", label:"라이선스" },
-    { id:"history", label:"로그" },
+    { id:"dashboard", label:"대시보드", icon:"📊" },
+    { id:"hardware", label:"하드웨어", icon:"🖥️" },
+    { id:"license", label:"라이선스", icon:"📋" },
+    { id:"users", label:"사용자", icon:"👤" },
+    { id:"trash", label:"휴지통", icon:"🗑️" },
+    { id:"history", label:"로그", icon:"📝" },
+    { id:"reports", label:"보고서", icon:"📈" },
   ];
 
   return (
     <div style={{ display:"flex", minHeight:"100vh", background:"#fff" }}>
+      {loginModal && (
+        <Modal title="로그인" onClose={()=>{}} width={400}>
+          <div style={{marginBottom:16}}>
+            <label style={{display:"block", marginBottom:8, fontSize:12}}>사용자 선택:</label>
+            <select onChange={(e)=>{ const u = users.find(x=>x.id===e.target.value); setCurrentUser(u); setLoginModal(false); }} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:6, boxSizing:"border-box"}}>
+              <option value="">선택하세요</option>
+              {users.map(u => <option key={u.id} value={u.id}>{u.name} ({ROLES[u.role]})</option>)}
+            </select>
+          </div>
+        </Modal>
+      )}
+
       <div style={{ width:200, background:"#f8f8f8", borderRight:"1px solid #e0e0e0", padding:16, display:"flex", flexDirection:"column" }}>
-        <div style={{ fontSize:16, fontWeight:700, marginBottom:20, color:"#0f6e56" }}>🖥️ IT 자산관리</div>
+        <div style={{ fontSize:14, fontWeight:700, marginBottom:12, color:"#0f6e56" }}>🖥️ IT 자산관리</div>
+        <div style={{fontSize:11, marginBottom:16, padding:8, background:"#e8f5e9", borderRadius:6, color:"#0f6e56"}}>
+          <div style={{fontWeight:600}}>{currentUser?.name}</div>
+          <div style={{fontSize:10, marginTop:2}}>{ROLES[currentUser?.role]}</div>
+        </div>
         <nav style={{ flex:1, display:"flex", flexDirection:"column", gap:4 }}>
           {nav.map(item => (
-            <button key={item.id} onClick={()=>setView(item.id)} style={{ padding:"10px 12px", textAlign:"left", border:"none", background:view===item.id?"#e8f5e9":"transparent", color:view===item.id?"#0f6e56":"#333", borderRadius:6, cursor:"pointer", fontWeight:view===item.id?600:400 }}>
-              {item.label}
+            <button key={item.id} onClick={()=>setView(item.id)} style={{ padding:"10px 12px", textAlign:"left", border:"none", background:view===item.id?"#e8f5e9":"transparent", color:view===item.id?"#0f6e56":"#333", borderRadius:6, cursor:"pointer", fontWeight:view===item.id?600:400, fontSize:13 }}>
+              {item.icon} {item.label}
             </button>
           ))}
         </nav>
-        <div style={{fontSize:12, color:"#666", paddingTop:12, borderTop:"1px solid #e0e0e0"}}>
-          HW {stats.totalHw} · 라이선스 {stats.totalLic} · 사용자 {stats.totalUsers}
-        </div>
+        <button onClick={()=>setLoginModal(true)} style={{padding:"10px 12px", background:"#f5f5f5", border:"1px solid #ddd", borderRadius:6, cursor:"pointer", fontSize:12}}>
+          🔄 다른 사용자
+        </button>
       </div>
 
-      <div style={{ flex:1, background:"#fafafa" }}>
-        {view==="dashboard" && <Dashboard stats={stats} hardware={hardware} licenses={licenses} history={history} setView={setView} />}
-        {view==="hardware" && <HardwarePage hardware={hardware} users={users} setHardware={setHardware} addHistory={addHistory} />}
-        {view==="license" && <LicensePage licenses={licenses} users={users} setLicenses={setLicenses} addHistory={addHistory} />}
+      <div style={{ flex:1, background:"#fafafa", overflow:"auto" }}>
+        {view==="dashboard" && <Dashboard stats={stats} hardware={hardware} history={history} />}
+        {view==="hardware" && <HardwarePage hardware={hardware} users={users} setHardware={setHardware} trash={trash} setTrash={setTrash} addHistory={addHistory} canEdit={canEdit} />}
+        {view==="license" && <LicensePage licenses={licenses} setLicenses={setLicenses} trash={trash} setTrash={setTrash} addHistory={addHistory} canEdit={canEdit} />}
+        {view==="users" && <UsersPage users={users} setUsers={setUsers} trash={trash} setTrash={setTrash} addHistory={addHistory} canEdit={canEdit} currentUser={currentUser} />}
+        {view==="trash" && <TrashPage trash={trash} setTrash={setTrash} hardware={hardware} setHardware={setHardware} licenses={licenses} setLicenses={setLicenses} users={users} setUsers={setUsers} addHistory={addHistory} canEdit={canEdit} />}
         {view==="history" && <HistoryPage history={history} />}
+        {view==="reports" && <ReportsPage hardware={hardware} licenses={licenses} users={users} history={history} />}
       </div>
     </div>
   );
