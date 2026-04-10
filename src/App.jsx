@@ -7,6 +7,7 @@ import { getDatabase, ref, onValue, set, push, remove, update } from "firebase/d
 const firebaseConfig = {
   apiKey: "AIzaSyCm5QptgvYSr0Kz57Nxpv-2y-TDC5el7jg",
   authDomain: "it-asset-manager-91180.firebaseapp.com",
+  // 중요: 싱가포르 서버 주소를 반드시 명시해야 합니다.
   databaseURL: "https://it-asset-manager-91180-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "it-asset-manager-91180",
   storageBucket: "it-asset-manager-91180.firebasestorage.app",
