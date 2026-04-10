@@ -10,9 +10,9 @@ const HW_TYPES = { desktop: "데스크탑", monitor: "모니터", laptop: "노�
 const HW_STATUS = { active: "사용중", inactive: "미사용", repair: "수리중", disposed: "폐기" };
 const ROLES = { admin: "관리자", user: "사용자", viewer: "조회자" };
 
-// [수정] ID 및 패스워드 필드 추가
+// [중요] 테스트용 계정 원본 데이터
 const INIT_USERS = [
-  { id: "u1", loginId: "admin", password: "admin123", name: "김철수", dept: "개발팀", email: "kim@company.com", role: "admin", createdAt: nowISO() },
+  { id: "u1", loginId: "admin", password: "admin123", name: "관리자", dept: "IT본부", email: "admin@company.com", role: "admin", createdAt: nowISO() },
   { id: "u2", loginId: "user", password: "user123", name: "이영희", dept: "디자인팀", email: "lee@company.com", role: "user", createdAt: nowISO() },
 ];
 
@@ -640,7 +640,7 @@ function UsersPage({ users, setUsers, trash, setTrash, addHistory, canEdit, curr
 
   const cols = [
     { label:"이름", render: u => <strong>{u.name}</strong> },
-    { label:"이메일", render: u => u.email },
+    { label:"ID", render: u => u.loginId },
     { label:"부서", render: u => u.dept },
     { label:"역할", render: u => <span style={{padding:"2px 8px", background:u.role==="admin"?"#ffebee":"#f5f5f5", borderRadius:4, fontSize:11}}>{ROLES[u.role]}</span> },
     { label:"", render: u => (
@@ -664,7 +664,8 @@ function UsersPage({ users, setUsers, trash, setTrash, addHistory, canEdit, curr
         <Modal title={modal==="add"?"사용자 추가":"사용자 수정"} onClose={()=>setModal(null)}>
           <div style={{display:"flex", flexDirection:"column", gap:12}}>
             <div><label style={{display:"block", marginBottom:4, fontSize:12}}>이름 *</label><input value={form.name||""} onChange={e=>setForm(f=>({...f,name:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4, boxSizing:"border-box"}} /></div>
-            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>이메일</label><input value={form.email||""} onChange={e=>setForm(f=>({...f,email:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4, boxSizing:"border-box"}} /></div>
+            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>로그인 ID</label><input value={form.loginId||""} onChange={e=>setForm(f=>({...f,loginId:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4, boxSizing:"border-box"}} /></div>
+            <div><label style={{display:"block", marginBottom:4, fontSize:12}}>비밀번호</label><input type="password" value={form.password||""} onChange={e=>setForm(f=>({...f,password:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4, boxSizing:"border-box"}} /></div>
             <div><label style={{display:"block", marginBottom:4, fontSize:12}}>부서</label><input value={form.dept||""} onChange={e=>setForm(f=>({...f,dept:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4, boxSizing:"border-box"}} /></div>
             {canEdit && <div><label style={{display:"block", marginBottom:4, fontSize:12}}>역할</label><select value={form.role||"user"} onChange={e=>setForm(f=>({...f,role:e.target.value}))} style={{width:"100%", padding:8, border:"1px solid #ddd", borderRadius:4, boxSizing:"border-box"}}>{Object.entries(ROLES).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></div>}
           </div>
@@ -716,16 +717,18 @@ function Dashboard({ stats, hardware, history }) {
   );
 }
 
-// ===================== LOGIN PAGE (추가) =====================
+// ===================== LOGIN PAGE =====================
 function LoginPage({ onLogin, users }) {
-  const [userId, setUserId] = useState("");
-  const [password, setPassword] = useState("");
+  const [inputLoginId, setInputLoginId] = useState("");
+  const [inputPassword, setInputPassword] = useState("");
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const user = users.find(u => u.loginId === userId && u.password === password);
-    if (user) {
-      onLogin(user);
+    // [중요] inputLoginId를 데이터베이스의 loginId 필드와 대조
+    const foundUser = users.find(u => u.loginId === inputLoginId && u.password === inputPassword);
+    
+    if (foundUser) {
+      onLogin(foundUser);
     } else {
       alert("아이디 또는 비밀번호가 올바르지 않습니다.");
     }
@@ -743,9 +746,9 @@ function LoginPage({ onLogin, users }) {
             <label style={{ display:"block", fontSize:12, fontWeight:600, marginBottom:6 }}>아이디</label>
             <input 
               required 
-              value={userId} 
-              onChange={e=>setUserId(e.target.value)} 
-              placeholder="ID 입력"
+              value={inputLoginId} 
+              onChange={e=>setInputLoginId(e.target.value)} 
+              placeholder="예: admin"
               style={{ width:"100%", padding:"12px", border:"1px solid #ddd", borderRadius:8, boxSizing:"border-box" }} 
             />
           </div>
@@ -754,8 +757,8 @@ function LoginPage({ onLogin, users }) {
             <input 
               required 
               type="password" 
-              value={password} 
-              onChange={e=>setPassword(e.target.value)} 
+              value={inputPassword} 
+              onChange={e=>setInputPassword(e.target.value)} 
               placeholder="Password 입력"
               style={{ width:"100%", padding:"12px", border:"1px solid #ddd", borderRadius:8, boxSizing:"border-box" }} 
             />
@@ -764,8 +767,8 @@ function LoginPage({ onLogin, users }) {
         </form>
         <div style={{ marginTop:24, padding:12, background:"#f8f9fa", borderRadius:8, fontSize:11, color:"#777" }}>
           <strong>테스트 계정:</strong><br/>
-          관리자: admin / admin123<br/>
-          사용자: user / user123
+          관리자: <span style={{color:"#0f6e56", fontWeight:600}}>admin</span> / admin123<br/>
+          사용자: <span style={{color:"#0f6e56", fontWeight:600}}>user</span> / user123
         </div>
       </div>
     </div>
@@ -776,6 +779,7 @@ function LoginPage({ onLogin, users }) {
 export default function App() {
   const [view, setView] = useState("dashboard");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
   
   const [hardware, setHardware] = useState(() => {
     const saved = localStorage.getItem("itam-hw");
@@ -785,10 +789,19 @@ export default function App() {
     const saved = localStorage.getItem("itam-lic");
     return saved ? JSON.parse(saved) : INIT_LIC;
   });
+  
+  // 사용자 데이터 로드 시 테스트 계정이 있는지 확인하고 보정
   const [users, setUsers] = useState(() => {
     const saved = localStorage.getItem("itam-users");
-    return saved ? JSON.parse(saved) : INIT_USERS;
+    let userList = saved ? JSON.parse(saved) : INIT_USERS;
+    
+    // 만약 admin이나 user 아이디를 가진 계정이 없다면 초기 데이터 강제 추가
+    if (!userList.find(u => u.loginId === "admin")) {
+        userList = [...INIT_USERS, ...userList.filter(u => u.loginId !== "admin" && u.loginId !== "user")];
+    }
+    return userList;
   });
+
   const [history, setHistory] = useState(() => {
     const saved = localStorage.getItem("itam-hist");
     return saved ? JSON.parse(saved) : [];
@@ -797,7 +810,6 @@ export default function App() {
     const saved = localStorage.getItem("itam-trash");
     return saved ? JSON.parse(saved) : [];
   });
-  const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => { localStorage.setItem("itam-hw", JSON.stringify(hardware)); }, [hardware]);
   useEffect(() => { localStorage.setItem("itam-lic", JSON.stringify(licenses)); }, [licenses]);
