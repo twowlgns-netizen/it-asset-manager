@@ -16,7 +16,6 @@ const INIT_USERS = [
   { id: "u2", loginId: "user", password: "user123", name: "이영희", dept: "디자인팀", role: "user", createdAt: nowISO() },
 ];
 
-// CSV 내보내기 함수
 const exportCSV = (data, fileName) => {
   if (!data.length) return alert("데이터가 없습니다.");
   const headers = Object.keys(data[0]).join(",");
@@ -30,7 +29,6 @@ const exportCSV = (data, fileName) => {
 
 // ===================== [2. 공통 UI 컴포넌트] =====================
 
-// 버튼 컴포넌트
 function Btn({ onClick, variant="default", children, style={}, disabled=false, type="button" }) {
   const styles = {
     default: { background:"#fff", color:"#333", border:"1px solid #ddd" },
@@ -43,32 +41,40 @@ function Btn({ onClick, variant="default", children, style={}, disabled=false, t
       padding:"10px 16px", borderRadius:10, fontSize:13, fontWeight:600, 
       cursor:disabled?"not-allowed":"pointer", opacity:disabled?0.5:1, 
       display:"inline-flex", alignItems:"center", justifyContent:"center",
-      transition: "all 0.2s", ...styles[variant], ...style 
+      transition: "all 0.2s", boxSizing: "border-box", ...styles[variant], ...style 
     }}>{children}</button>
   );
 }
 
-// 반응형 모달
+// [수정] 모바일 짤림 방지 및 반응형 레이아웃 강화
 function Modal({ title, onClose, children }) {
+  const isMobile = window.innerWidth < 768;
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:9999, backdropFilter:"blur(4px)" }} onClick={(e)=>e.target===e.currentTarget && onClose()}>
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", display:"flex", alignItems: isMobile ? "flex-end" : "center", justifyContent:"center", zIndex:9999, backdropFilter:"blur(4px)" }} onClick={(e)=>e.target===e.currentTarget && onClose()}>
       <div style={{ 
-        background:"#fff", borderTopLeftRadius:24, borderTopRightRadius:24, width:"100%", maxWidth:600, 
-        maxHeight:"90vh", overflowY:"auto", paddingBottom:40, boxShadow: "0 -10px 25px rgba(0,0,0,0.1)",
-        animation: "slideUp 0.3s ease-out"
+        background:"#fff", 
+        borderTopLeftRadius:24, borderTopRightRadius:24, 
+        borderBottomLeftRadius: isMobile ? 0 : 24, borderBottomRightRadius: isMobile ? 0 : 24,
+        width:"100%", maxWidth:600, 
+        maxHeight:"90vh", overflowY:"auto", paddingBottom: isMobile ? 60 : 40, boxShadow: "0 -10px 25px rgba(0,0,0,0.1)",
+        boxSizing: "border-box",
+        animation: isMobile ? "slideUp 0.3s ease-out" : "fadeIn 0.2s ease-out"
       }}>
-        <style>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
+        <style>{`
+          @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+          @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+          input, select, textarea { box-sizing: border-box !important; width: 100%; }
+        `}</style>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"20px 24px", borderBottom:"1px solid #f0f0f0", position:"sticky", top:0, background:"#fff", zIndex:2 }}>
           <h2 style={{ margin:0, fontSize:18, fontWeight:700 }}>{title}</h2>
           <button onClick={onClose} style={{ background:"#f5f5f5", border:"none", borderRadius:50, width:32, height:32, cursor:"pointer" }}>✕</button>
         </div>
-        <div style={{ padding: "24px" }}>{children}</div>
+        <div style={{ padding: "24px", boxSizing: "border-box" }}>{children}</div>
       </div>
     </div>
   );
 }
 
-// 반응형 테이블
 function ResponsiveTable({ cols, rows, empty="데이터가 없습니다." }) {
   return (
     <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #eee", overflow: "hidden" }}>
@@ -102,7 +108,6 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.innerWidth < 768 : false);
 
-  // 데이터 상태 관리
   const [hardware, setHardware] = useState(() => JSON.parse(localStorage.getItem("itam-hw") || "[]"));
   const [users, setUsers] = useState(() => {
     const saved = JSON.parse(localStorage.getItem("itam-users") || "null");
@@ -136,7 +141,6 @@ export default function App() {
 
   const canEdit = currentUser.role === "admin" || currentUser.role === "user";
 
-  // 공통 메뉴 정의
   const menuItems = [
     { id: "dashboard", label: "홈", icon: "🏠" },
     { id: "hardware", label: "장비", icon: "🖥️" },
@@ -147,9 +151,8 @@ export default function App() {
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", height: "100vh", background: "#f8fafc" }}>
+    <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", height: "100vh", background: "#f8fafc", overflow: "hidden" }}>
       
-      {/* 데스크탑 사이드바 */}
       {!isMobile && (
         <div style={{ width: 250, background: "#fff", borderRight: "1px solid #e2e8f0", padding: "24px", display: "flex", flexDirection: "column" }}>
           <div style={{ fontSize: 22, fontWeight: 800, color: "#0f6e56", marginBottom: 40, letterSpacing: "-0.5px" }}>Asset Manager</div>
@@ -174,8 +177,7 @@ export default function App() {
         </div>
       )}
 
-      {/* 컨텐츠 영역 */}
-      <div style={{ flex: 1, overflowY: "auto", paddingBottom: isMobile ? 80 : 0 }}>
+      <div style={{ flex: 1, overflowY: "auto", position: "relative" }}>
         {isMobile && (
           <div style={{ background: "#fff", padding: "16px 20px", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, zIndex: 10 }}>
             <span style={{ fontWeight: 800, color: "#0f6e56", fontSize: 18 }}>Asset Manager</span>
@@ -183,21 +185,20 @@ export default function App() {
           </div>
         )}
 
-        <main style={{ padding: isMobile ? "20px" : "40px", maxWidth: 1200, margin: "0 auto" }}>
+        <main style={{ padding: isMobile ? "20px" : "40px", paddingBottom: isMobile ? 100 : 40, maxWidth: 1200, margin: "0 auto", boxSizing: "border-box" }}>
           {view === "dashboard" && <DashboardSection stats={{hw: hardware, lic: licenses, users: users}} history={history} isMobile={isMobile} />}
           {view === "hardware" && <HardwareSection data={hardware} setData={setHardware} setTrash={setTrash} addHistory={addHistory} canEdit={canEdit} isMobile={isMobile} />}
-          {view === "license" && <LicenseSection data={licenses} setData={setLicenses} setTrash={setTrash} addHistory={addHistory} canEdit={canEdit} />}
-          {view === "users" && <UsersSection data={users} setData={setUsers} setTrash={setTrash} addHistory={addHistory} canEdit={currentUser.role==='admin'} />}
-          {view === "history" && <HistorySection history={history} />}
-          {view === "trash" && <TrashSection trash={trash} setTrash={setTrash} setHardware={setHardware} setLicenses={setLicenses} setUsers={setUsers} addHistory={addHistory} canEdit={canEdit} />}
+          {view === "license" && <LicenseSection data={licenses} setData={setLicenses} setTrash={setTrash} addHistory={addHistory} canEdit={canEdit} isMobile={isMobile} />}
+          {view === "users" && <UsersSection data={users} setData={setUsers} setTrash={setTrash} addHistory={addHistory} canEdit={currentUser.role==='admin'} isMobile={isMobile} />}
+          {view === "history" && <HistorySection history={history} isMobile={isMobile} />}
+          {view === "trash" && <TrashSection trash={trash} setTrash={setTrash} setHardware={setHardware} setLicenses={setLicenses} setUsers={setUsers} addHistory={addHistory} canEdit={canEdit} isMobile={isMobile} />}
         </main>
       </div>
 
-      {/* 모바일 하단 탭 바 */}
       {isMobile && (
         <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, height: 70, background: "#fff", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-around", alignItems: "center", zIndex: 1000, paddingBottom: 10 }}>
           {menuItems.slice(0, 5).map(m => (
-            <div key={m.id} onClick={() => setView(m.id)} style={{ textAlign: "center", color: view === m.id ? "#0f6e56" : "#94a3b8", flex: 1 }}>
+            <div key={m.id} onClick={() => setView(m.id)} style={{ textAlign: "center", color: view === m.id ? "#0f6e56" : "#94a3b8", flex: 1, cursor: "pointer" }}>
               <div style={{ fontSize: 22 }}>{m.icon}</div>
               <div style={{ fontSize: 10, fontWeight: view === m.id ? 700 : 500, marginTop: 4 }}>{m.label}</div>
             </div>
@@ -208,15 +209,14 @@ export default function App() {
   );
 }
 
-// ===================== [4. 각 섹션 컴포넌트 (상세 로직 포함)] =====================
+// ===================== [4. 각 섹션 컴포넌트] =====================
 
-// 대시보드
 function DashboardSection({ stats, history, isMobile }) {
   const cards = [
     { label: "전체 하드웨어", val: stats.hw.length, color: "#0f6e56", icon: "💻" },
     { label: "활성 라이선스", val: stats.lic.length, color: "#2563eb", icon: "🔑" },
     { label: "등록 사용자", val: stats.users.length, color: "#7c3aed", icon: "👥" },
-    { label: "최근 7일 활동", val: history.length, color: "#ea580c", icon: "📝" },
+    { label: "전체 로그", val: history.length, color: "#ea580c", icon: "📝" },
   ];
   return (
     <div>
@@ -234,25 +234,24 @@ function DashboardSection({ stats, history, isMobile }) {
         <h3 style={{ margin: "0 0 16px", fontSize: 16 }}>최근 활동 피드</h3>
         {history.slice(0, 5).map((h, i) => (
           <div key={i} style={{ padding: "12px 0", borderBottom: i === 4 ? "none" : "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{h.action} <span style={{ fontWeight: 400, color: "#64748b" }}>({h.aName})</span></div>
+            <div style={{ overflow: "hidden" }}>
+              <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{h.action} <span style={{ fontWeight: 400, color: "#64748b" }}>({h.aName})</span></div>
               <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>{h.userName} • {fDateTime(h.ts)}</div>
             </div>
-            <div style={{ fontSize: 18 }}>👉</div>
           </div>
         ))}
+        {history.length === 0 && <div style={{ textAlign: "center", color: "#999", padding: "20px" }}>활동 내역이 없습니다.</div>}
       </div>
     </div>
   );
 }
 
-// 하드웨어 관리
 function HardwareSection({ data, setData, setTrash, addHistory, canEdit, isMobile }) {
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState({});
   const [filter, setFilter] = useState("");
 
-  const filtered = data.filter(h => h.name.toLowerCase().includes(filter.toLowerCase()) || h.brand?.toLowerCase().includes(filter.toLowerCase()));
+  const filtered = data.filter(h => h.name.toLowerCase().includes(filter.toLowerCase()));
 
   const save = () => {
     if (!form.name) return alert("자산명을 입력하세요.");
@@ -277,9 +276,9 @@ function HardwareSection({ data, setData, setTrash, addHistory, canEdit, isMobil
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexDirection: isMobile ? "column" : "row", gap: 16 }}>
-        <h2 style={{ margin: 0 }}>하드웨어</h2>
+        <h2 style={{ margin: 0, alignSelf: "flex-start" }}>하드웨어</h2>
         <div style={{ display: "flex", gap: 8, width: isMobile ? "100%" : "auto" }}>
-          <input placeholder="자산 검색..." value={filter} onChange={e => setFilter(e.target.value)} style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid #e2e8f0", flex: 1 }} />
+          <input placeholder="자산 검색..." value={filter} onChange={e => setFilter(e.target.value)} style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid #e2e8f0", flex: 1, boxSizing: "border-box" }} />
           {canEdit && <Btn onClick={() => { setForm({ status: "active", type: "laptop" }); setModal("add"); }} variant="primary">+ 등록</Btn>}
         </div>
       </div>
@@ -305,27 +304,27 @@ function HardwareSection({ data, setData, setTrash, addHistory, canEdit, isMobil
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div>
               <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 6 }}>자산명 *</label>
-              <input value={form.name || ""} onChange={e => setForm({ ...form, name: e.target.value })} style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #ddd", boxSizing: "border-box" }} />
+              <input value={form.name || ""} onChange={e => setForm({ ...form, name: e.target.value })} style={{ padding: 12, borderRadius: 10, border: "1px solid #ddd" }} />
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 6 }}>유형</label>
-                <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #ddd" }}>
+                <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} style={{ padding: 12, borderRadius: 10, border: "1px solid #ddd" }}>
                   {Object.entries(HW_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
               </div>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 6 }}>상태</label>
-                <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #ddd" }}>
+                <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} style={{ padding: 12, borderRadius: 10, border: "1px solid #ddd" }}>
                   {Object.entries(HW_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
               </div>
             </div>
             <div>
               <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 6 }}>비용 (원)</label>
-              <input type="number" value={form.cost || ""} onChange={e => setForm({ ...form, cost: Number(e.target.value) })} style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #ddd", boxSizing: "border-box" }} />
+              <input type="number" value={form.cost || ""} onChange={e => setForm({ ...form, cost: Number(e.target.value) })} style={{ padding: 12, borderRadius: 10, border: "1px solid #ddd" }} />
             </div>
-            <Btn onClick={save} variant="primary" style={{ marginTop: 10, padding: 16 }}>저장하기</Btn>
+            <Btn onClick={save} variant="primary" style={{ marginTop: 10, padding: 16, width: "100%" }}>저장하기</Btn>
           </div>
         </Modal>
       )}
@@ -333,8 +332,7 @@ function HardwareSection({ data, setData, setTrash, addHistory, canEdit, isMobil
   );
 }
 
-// 라이선스 섹션 (간략화된 로직 포함)
-function LicenseSection({ data, setData, setTrash, addHistory, canEdit }) {
+function LicenseSection({ data, setData, setTrash, addHistory, canEdit, isMobile }) {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
@@ -343,7 +341,7 @@ function LicenseSection({ data, setData, setTrash, addHistory, canEdit }) {
       </div>
       <ResponsiveTable 
         cols={[
-          { label: "제품명", render: l => <b>{l.name}</b> },
+          { label: "제품명", render: l => <b>{l.name || "-"}</b> },
           { label: "공급사", key: "vendor" },
           { label: "총 좌석", key: "totalSeats" },
           { label: "비용", render: l => fMoney(l.cost) },
@@ -354,8 +352,7 @@ function LicenseSection({ data, setData, setTrash, addHistory, canEdit }) {
   );
 }
 
-// 사용자 섹션
-function UsersSection({ data, setData, setTrash, addHistory, canEdit }) {
+function UsersSection({ data, setData, setTrash, addHistory, canEdit, isMobile }) {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
@@ -375,8 +372,7 @@ function UsersSection({ data, setData, setTrash, addHistory, canEdit }) {
   );
 }
 
-// 이력 관리
-function HistorySection({ history }) {
+function HistorySection({ history, isMobile }) {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
@@ -397,8 +393,7 @@ function HistorySection({ history }) {
   );
 }
 
-// 휴지통 섹션
-function TrashSection({ trash, setTrash, setHardware, setLicenses, setUsers, addHistory, canEdit }) {
+function TrashSection({ trash, setTrash, setHardware, setLicenses, setUsers, addHistory, canEdit, isMobile }) {
   const restore = (item) => {
     if (item.type === "hardware") setHardware(p => [item, ...p]);
     else if (item.type === "license") setLicenses(p => [item, ...p]);
@@ -424,7 +419,6 @@ function TrashSection({ trash, setTrash, setHardware, setLicenses, setUsers, add
   );
 }
 
-// 로그인 페이지
 function LoginPage({ onLogin, users }) {
   const [id, setId] = useState("");
   const [pw, setPw] = useState("");
@@ -437,17 +431,17 @@ function LoginPage({ onLogin, users }) {
   };
 
   return (
-    <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f1f5f9", padding: 20 }}>
-      <div style={{ width: "100%", maxWidth: 380, background: "#fff", padding: "40px 30px", borderRadius: 24, boxShadow: "0 20px 40px rgba(0,0,0,0.05)" }}>
+    <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f1f5f9", padding: 20, boxSizing: "border-box" }}>
+      <div style={{ width: "100%", maxWidth: 380, background: "#fff", padding: "40px 30px", borderRadius: 24, boxShadow: "0 20px 40px rgba(0,0,0,0.05)", boxSizing: "border-box" }}>
         <div style={{ textAlign: "center", marginBottom: 32 }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>🛡️</div>
           <h1 style={{ fontSize: 24, fontWeight: 800, color: "#0f6e56", margin: "0 0 8px" }}>Asset Pro</h1>
           <p style={{ color: "#64748b", fontSize: 14 }}>IT 자산 관리 시스템 로그인</p>
         </div>
         <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <input placeholder="아이디" value={id} onChange={e => setId(e.target.value)} required style={{ padding: 16, borderRadius: 12, border: "1px solid #e2e8f0", fontSize: 15 }} />
-          <input type="password" placeholder="비밀번호" value={pw} onChange={e => setPw(e.target.value)} required style={{ padding: 16, borderRadius: 12, border: "1px solid #e2e8f0", fontSize: 15 }} />
-          <Btn type="submit" variant="primary" style={{ padding: 16, fontSize: 16, marginTop: 10 }}>시작하기</Btn>
+          <input placeholder="아이디" value={id} onChange={e => setId(e.target.value)} required style={{ padding: 16, borderRadius: 12, border: "1px solid #e2e8f0", fontSize: 15, width: "100%", boxSizing: "border-box" }} />
+          <input type="password" placeholder="비밀번호" value={pw} onChange={e => setPw(e.target.value)} required style={{ padding: 16, borderRadius: 12, border: "1px solid #e2e8f0", fontSize: 15, width: "100%", boxSizing: "border-box" }} />
+          <Btn type="submit" variant="primary" style={{ padding: 16, fontSize: 16, marginTop: 10, width: "100%" }}>시작하기</Btn>
         </form>
         <div style={{ marginTop: 24, padding: 16, background: "#f8fafc", borderRadius: 12, fontSize: 12, lineHeight: 1.6 }}>
           <div style={{ fontWeight: 700, marginBottom: 4, color: "#0f6e56" }}>테스트 계정 정보</div>
