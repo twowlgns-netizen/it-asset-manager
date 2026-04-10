@@ -7,7 +7,7 @@ import { getDatabase, ref, onValue, set, push, remove, update } from "firebase/d
 const firebaseConfig = {
   apiKey: "AIzaSyCm5QptgvYSr0Kz57Nxpv-2y-TDC5el7jg",
   authDomain: "it-asset-manager-91180.firebaseapp.com",
-  // 중요: 싱가포르 서버 주소를 반드시 명시해야 합니다.
+  // [수정 핵심] 싱가포르 리전 주소를 명시적으로 추가했습니다.
   databaseURL: "https://it-asset-manager-91180-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "it-asset-manager-91180",
   storageBucket: "it-asset-manager-91180.firebasestorage.app",
@@ -121,15 +121,23 @@ export default function App() {
       const val = ss.val();
       setHardware(val ? Object.entries(val).map(([id, v]) => ({ ...v, id })) : []);
     });
+    
     const unsubUsers = onValue(ref(db, 'users'), (ss) => {
       const val = ss.val();
-      setUsers(val ? Object.entries(val).map(([id, v]) => ({ ...v, id })) : INIT_USERS);
+      if (!val) {
+          // 데이터가 아예 없을 경우 초기 관리자 계정 생성 (테스트용)
+          setUsers(INIT_USERS);
+      } else {
+          setUsers(Object.entries(val).map(([id, v]) => ({ ...v, id })));
+      }
     });
+
     const unsubHist = onValue(ref(db, 'history'), (ss) => {
       const val = ss.val();
       const list = val ? Object.entries(val).map(([id, v]) => ({ ...v, id })) : [];
       setHistory(list.sort((a,b) => new Date(b.ts) - new Date(a.ts)));
     });
+
     const unsubTrash = onValue(ref(db, 'trash'), (ss) => {
       const val = ss.val();
       setTrash(val ? Object.entries(val).map(([id, v]) => ({ ...v, id })) : []);
@@ -231,20 +239,23 @@ function HardwareSection({ data, addHistory, canEdit, isMobile }) {
     if (!form.name) return alert("자산명을 입력하세요.");
     if (modal === "add") {
       const newRef = push(ref(db, 'hardware'));
-      set(newRef, { ...form, createdAt: nowISO() });
-      addHistory("하드웨어 등록", "hardware", newRef.key, form.name, "신규 등록");
+      set(newRef, { ...form, createdAt: nowISO() }).then(() => {
+          addHistory("하드웨어 등록", "hardware", newRef.key, form.name, "신규 등록");
+      });
     } else {
-      update(ref(db, `hardware/${form.id}`), form);
-      addHistory("하드웨어 수정", "hardware", form.id, form.name, "정보 수정");
+      update(ref(db, `hardware/${form.id}`), form).then(() => {
+          addHistory("하드웨어 수정", "hardware", form.id, form.name, "정보 수정");
+      });
     }
     setModal(null);
   };
 
   const del = (item) => {
     if (!window.confirm("삭제하시겠습니까?")) return;
-    remove(ref(db, `hardware/${item.id}`));
-    push(ref(db, 'trash'), { ...item, type: "hardware", deletedAt: nowISO() });
-    addHistory("하드웨어 삭제", "hardware", item.id, item.name, "휴지통 이동");
+    remove(ref(db, `hardware/${item.id}`)).then(() => {
+        push(ref(db, 'trash'), { ...item, type: "hardware", deletedAt: nowISO() });
+        addHistory("하드웨어 삭제", "hardware", item.id, item.name, "휴지통 이동");
+    });
   };
 
   return (
@@ -301,10 +312,11 @@ function HistorySection({ history }) {
 
 function TrashSection({ trash, addHistory, canEdit }) {
   const restore = (item) => {
-    remove(ref(db, `trash/${item.id}`));
-    const { type, deletedAt, id, ...rest } = item;
-    set(ref(db, `${type}/${id}`), rest);
-    addHistory("데이터 복구", type, id, rest.name, "복구됨");
+    remove(ref(db, `trash/${item.id}`)).then(() => {
+        const { type, deletedAt, id, ...rest } = item;
+        set(ref(db, `${type}/${id}`), rest);
+        addHistory("데이터 복구", type, id, rest.name, "복구됨");
+    });
   };
 
   return (
