@@ -22,50 +22,66 @@ const INIT_USERS = [
 ];
 
 // ===================== [API 헬퍼] =====================
+
+// 응답을 안전하게 파싱 - JSON이 아니거나 body가 비어도 에러 없이 처리
+const safeJson = async (res) => {
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`HTTP ${res.status}: ${text}`);
+  }
+  const text = await res.text();
+  if (!text || text.trim() === "") return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
+};
+
 const api = {
   // 하드웨어
   getHardware: () =>
-    fetch(`${BASE_URL}/assets`).then((r) => r.json()),
+    fetch(`${BASE_URL}/assets`).then(safeJson),
   addHardware: (data) =>
     fetch(`${BASE_URL}/assets`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
-    }).then((r) => r.json()),
+    }).then(safeJson),
   updateHardware: (id, data) =>
     fetch(`${BASE_URL}/assets/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
-    }).then((r) => r.json()),
+    }).then(safeJson),
   deleteHardware: (id) =>
-    fetch(`${BASE_URL}/assets/${id}`, { method: "DELETE" }).then((r) => r.json()),
+    fetch(`${BASE_URL}/assets/${id}`, { method: "DELETE" }).then(safeJson),
 
   // 유저
   getUsers: () =>
-    fetch(`${BASE_URL}/users`).then((r) => r.json()),
+    fetch(`${BASE_URL}/users`).then(safeJson),
 
   // 히스토리
   getHistory: () =>
-    fetch(`${BASE_URL}/history`).then((r) => r.json()),
+    fetch(`${BASE_URL}/history`).then(safeJson),
   addHistory: (data) =>
     fetch(`${BASE_URL}/history`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
-    }).then((r) => r.json()),
+    }).then(safeJson),
 
   // 휴지통
   getTrash: () =>
-    fetch(`${BASE_URL}/trash`).then((r) => r.json()),
+    fetch(`${BASE_URL}/trash`).then(safeJson),
   addTrash: (data) =>
     fetch(`${BASE_URL}/trash`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
-    }).then((r) => r.json()),
+    }).then(safeJson),
   deleteTrash: (id) =>
-    fetch(`${BASE_URL}/trash/${id}`, { method: "DELETE" }).then((r) => r.json()),
+    fetch(`${BASE_URL}/trash/${id}`, { method: "DELETE" }).then(safeJson),
 
   // 복구: trash 삭제 후 원래 경로에 PUT
   restoreItem: (type, id, data) =>
@@ -73,7 +89,7 @@ const api = {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
-    }).then((r) => r.json()),
+    }).then(safeJson),
 };
 
 // ===================== [메인 앱] =====================
@@ -360,34 +376,34 @@ function HardwareSection({ data, setHardware, addHistory, canEdit, trash, setTra
     if (!form.name) return alert("자산명을 입력하세요.");
     setLoading(true);
 
-    if (modal === "add") {
-      const newItem = { ...form, createdAt: nowISO() };
-      api
-        .addHardware(newItem)
-        .then((created) => {
-          setHardware((prev) => [...prev, created]);
-          addHistory("하드웨어 등록", "hardware", created.id, form.name, "신규 등록");
-          setModal(null);
-        })
-        .catch((err) => {
-          console.error(err);
-          alert("저장 중 오류가 발생했습니다.");
-        })
-        .finally(() => setLoading(false));
-    } else {
-      api
-        .updateHardware(form.id, form)
-        .then((updated) => {
-          setHardware((prev) => prev.map((h) => (h.id === form.id ? updated : h)));
+    const isAdd = modal === "add";
+    const newItem = isAdd ? { ...form, createdAt: nowISO() } : form;
+    const request = isAdd
+      ? api.addHardware(newItem)
+      : api.updateHardware(form.id, form);
+
+    request
+      .then(() => {
+        // 서버 응답에 id가 있든 없든, 저장 후 목록을 다시 불러옴
+        return api.getHardware();
+      })
+      .then((list) => {
+        const fresh = Array.isArray(list) ? list : [];
+        setHardware(fresh);
+        if (isAdd) {
+          // 새로 추가된 항목의 id를 찾아 히스토리에 기록
+          const created = fresh.find((h) => h.name === form.name);
+          addHistory("하드웨어 등록", "hardware", created?.id ?? "", form.name, "신규 등록");
+        } else {
           addHistory("하드웨어 수정", "hardware", form.id, form.name, "정보 수정");
-          setModal(null);
-        })
-        .catch((err) => {
-          console.error(err);
-          alert("수정 중 오류가 발생했습니다.");
-        })
-        .finally(() => setLoading(false));
-    }
+        }
+        setModal(null);
+      })
+      .catch((err) => {
+        console.error("save error:", err);
+        alert(`오류가 발생했습니다.\n${err.message}`);
+      })
+      .finally(() => setLoading(false));
   };
 
   const deleteItem = (item) => {
