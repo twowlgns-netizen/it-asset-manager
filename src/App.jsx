@@ -349,7 +349,7 @@ function HardwareSection({ data, setHardware, addHistory, canEdit, trash, setTra
     setLoading(true);
 
     const isAdd = modal === "add";
-    const newItem = isAdd ? { ...form, createdAt: nowISO() } : form;
+    const newItem = isAdd ? { ...form } : form;
     const request = isAdd ? api.addHardware(newItem) : api.updateHardware(form.id, form);
 
     request
