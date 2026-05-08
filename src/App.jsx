@@ -187,7 +187,7 @@ export default function App() {
     <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", height: "100vh", background: "#f8fafc", overflow: "hidden" }}>
       {!isMobile && (
         <div style={{ width: 220, background: "#fff", borderRight: "1px solid #e2e8f0", padding: "24px", display: "flex", flexDirection: "column" }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: "#0f6e56", marginBottom: 32 }}>Asset Manager</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: "#0f6e56", marginBottom: 32 }}>GCcare IT Asset Manager</div>
           <div style={{ flex: 1 }}>
             {menuItems.map(m => (
               <div key={m.id} onClick={() => setView(m.id)}
