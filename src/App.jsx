@@ -41,24 +41,24 @@ const STATUS_COLORS = {
   dispose_target: { bg: "#fef3c7", color: "#d97706" },
 };
 
-// 전체 필드 정의 (순서 = Excel 컬럼 순서)
+// 전체 필드 정의 — key는 PostgreSQL 실제 컬럼명(소문자)과 일치시킴
 const FIELDS = [
   { key: "num",            label: "번호",              type: "number"   },
-  { key: "assetStatus",    label: "자산상태",           type: "select",   options: ASSET_STATUS_OPTIONS },
-  { key: "inspectionDate", label: "실사 날짜",          type: "text"     },
-  { key: "gcCode",         label: "GC자산코드",         type: "text"     },
-  { key: "imedCode",       label: "아이메드 자산코드",   type: "text"     },
-  { key: "serialNumber",   label: "제조번호",            type: "text"     },
+  { key: "assetstatus",    label: "자산상태",           type: "select",   options: ASSET_STATUS_OPTIONS },
+  { key: "inspectiondate", label: "실사 날짜",          type: "text"     },
+  { key: "gccode",         label: "GC자산코드",         type: "text"     },
+  { key: "imedcode",       label: "아이메드 자산코드",   type: "text"     },
+  { key: "serialnumber",   label: "제조번호",            type: "text"     },
   { key: "ip",             label: "IP",                 type: "text"     },
   { key: "team",           label: "팀(부서명)",          type: "text"     },
-  { key: "userName",       label: "사용자",              type: "text"     },
-  { key: "pcName",         label: "PC 이름",             type: "text"     },
-  { key: "modelName",      label: "모델명",              type: "text"     },
-  { key: "assetType",      label: "자산구분",            type: "select",   options: ASSET_TYPE_OPTIONS },
+  { key: "username",       label: "사용자",              type: "text"     },
+  { key: "pcname",         label: "PC 이름",             type: "text"     },
+  { key: "modelname",      label: "모델명",              type: "text"     },
+  { key: "assettype",      label: "자산구분",            type: "select",   options: ASSET_TYPE_OPTIONS },
   { key: "notes",          label: "비고(이력관리)",      type: "textarea" },
-  { key: "macAddress",     label: "MAC Address",        type: "text"     },
-  { key: "receiptDate",    label: "자산 수령일",         type: "text"     },
-  { key: "purchaseDate",   label: "구입일자",            type: "text"     },
+  { key: "macaddress",     label: "MAC Address",        type: "text"     },
+  { key: "receiptdate",    label: "자산 수령일",         type: "text"     },
+  { key: "purchasedate",   label: "구입일자",            type: "text"     },
   { key: "manufacturer",   label: "제조사",              type: "text"     },
   { key: "cpu",            label: "CPU",                type: "text"     },
   { key: "memory",         label: "Memory",             type: "text"     },
@@ -66,9 +66,9 @@ const FIELDS = [
   { key: "purpose",        label: "목적/기능",           type: "text"     },
   { key: "corporation",    label: "법인",                type: "text"     },
   { key: "location",       label: "위치(건물)",          type: "text"     },
-  { key: "purchaseInfo",   label: "구매정보(전자결재)",  type: "text"     },
-  { key: "monitorCount",   label: "모니터 수량",         type: "number"   },
-  { key: "paidLicense",    label: "유료 라이선스",       type: "text"     },
+  { key: "purchaseinfo",   label: "구매정보(전자결재)",  type: "text"     },
+  { key: "monitorcount",   label: "모니터 수량",         type: "number"   },
+  { key: "paidlicense",    label: "유료 라이선스",       type: "text"     },
 ];
 // 한국어 라벨 → key 역매핑 (가져오기 시 사용)
 const LABEL_TO_KEY = Object.fromEntries(FIELDS.map(f => [f.label, f.key]));
@@ -236,9 +236,9 @@ export default function App() {
 function DashboardSection({ hw, history, isMobile }) {
   const counts = {
     total:          hw.length,
-    active:         hw.filter(h => h.assetStatus === "active").length,
-    disposed:       hw.filter(h => h.assetStatus === "disposed" || h.assetStatus === "dispose_target").length,
-    repair:         hw.filter(h => h.assetStatus === "repair").length,
+    active:         hw.filter(h => h.assetstatus === "active").length,
+    disposed:       hw.filter(h => h.assetstatus === "disposed" || h.assetstatus === "dispose_target").length,
+    repair:         hw.filter(h => h.assetstatus === "repair").length,
   };
   const cards = [
     { label: "전체 장비",   value: counts.total,    color: "#0f6e56" },
@@ -266,7 +266,7 @@ function DashboardSection({ hw, history, isMobile }) {
           history.slice(0, 10).map((h, i) => (
             <div key={i} style={{ padding: "12px 18px", borderBottom: "1px solid #f8fafc", display: "flex", gap: 16, alignItems: "center" }}>
               <span style={{ fontSize: 11, color: "#94a3b8", flexShrink: 0 }}>{fDateTime(h.ts)}</span>
-              <span style={{ fontSize: 13, color: "#334155" }}><b>{h.userName}</b> · {h.action} · {h.aName}</span>
+              <span style={{ fontSize: 13, color: "#334155" }}><b>{h.username}</b> · {h.action} · {h.aName}</span>
             </div>
           ))
         )}
@@ -292,16 +292,16 @@ function HardwareSection({ data, setHardware, addHistory, canEdit, trash, setTra
   // ── 검색/필터 ──
   const filtered = data.filter(h => {
     const q = searchText.trim().toLowerCase();
-    const matchText = !q || [h.gcCode, h.imedCode, h.userName, h.team, h.modelName, h.location, h.pcName, h.serialNumber]
+    const matchText = !q || [h.gccode, h.imedcode, h.username, h.team, h.modelname, h.location, h.pcname, h.serialnumber]
       .some(v => (v || "").toLowerCase().includes(q));
-    const matchStatus = !filterStatus || h.assetStatus === filterStatus;
-    const matchType   = !filterType   || h.assetType   === filterType;
+    const matchStatus = !filterStatus || h.assetstatus === filterStatus;
+    const matchType   = !filterType   || h.assettype   === filterType;
     return matchText && matchStatus && matchType;
   });
 
   // ── 저장 (등록/수정) ──
   const save = () => {
-    if (!form.gcCode && !form.modelName && !form.imedCode) return alert("GC자산코드 또는 모델명을 입력하세요.");
+    if (!form.gccode && !form.modelname && !form.imedcode) return alert("GC자산코드 또는 모델명을 입력하세요.");
     setLoading(true);
     const isAdd = modal === "add";
     const req = isAdd ? api.addHardware(form) : api.updateHardware(form.id, form);
@@ -309,8 +309,8 @@ function HardwareSection({ data, setHardware, addHistory, canEdit, trash, setTra
       .then(list => {
         const fresh = Array.isArray(list) ? list : [];
         setHardware(fresh);
-        const name = form.gcCode || form.modelName || form.imedCode || "자산";
-        if (isAdd) { const c = fresh.find(h => h.gcCode === form.gcCode); addHistory("하드웨어 등록", "hardware", c?.id ?? "", name, "신규 등록"); }
+        const name = form.gccode || form.modelname || form.imedcode || "자산";
+        if (isAdd) { const c = fresh.find(h => h.gccode === form.gccode); addHistory("하드웨어 등록", "hardware", c?.id ?? "", name, "신규 등록"); }
         else         addHistory("하드웨어 수정", "hardware", form.id, name, "정보 수정");
         setModal(null);
       })
@@ -320,7 +320,7 @@ function HardwareSection({ data, setHardware, addHistory, canEdit, trash, setTra
 
   // ── 삭제 → 휴지통 ──
   const deleteItem = (item) => {
-    const name = item.gcCode || item.modelName || "자산";
+    const name = item.gccode || item.modelname || "자산";
     if (!window.confirm(`"${name}"을(를) 휴지통으로 이동하시겠습니까?`)) return;
     api.deleteHardware(item.id)
       .then(() => api.addTrash({ item_data: item, deletedAt: nowISO() }))
@@ -406,7 +406,7 @@ function HardwareSection({ data, setHardware, addHistory, canEdit, trash, setTra
       const items = rawRows
         .filter(row => Object.values(row).some(v => v !== ""))
         .map(row => {
-          const item = { assetStatus: "active", assetType: "laptop" };
+          const item = { assetstatus: "active", assettype: "laptop" };
           FIELDS.forEach(f => {
             const val = row[f.label] !== undefined ? row[f.label] : (row[f.key] !== undefined ? row[f.key] : "");
             if (val !== "") item[f.key] = val;
@@ -451,7 +451,7 @@ function HardwareSection({ data, setHardware, addHistory, canEdit, trash, setTra
             </Btn>
             <Btn onClick={exportCSV}>⬇️ CSV</Btn>
             <Btn onClick={exportExcel}>⬇️ Excel</Btn>
-            {canEdit && <Btn onClick={() => { setForm({ assetStatus: "active", assetType: "laptop" }); setModal("add"); }} variant="primary">+ 등록</Btn>}
+            {canEdit && <Btn onClick={() => { setForm({ assetstatus: "active", assettype: "laptop" }); setModal("add"); }} variant="primary">+ 등록</Btn>}
           </div>
         </div>
 
@@ -487,17 +487,17 @@ function HardwareSection({ data, setHardware, addHistory, canEdit, trash, setTra
         cols={[
           { label: "번호",   render: h => <span style={{ color: "#94a3b8", fontSize: 12 }}>{h.num || "-"}</span> },
           { label: "자산상태", render: h => {
-            const s = STATUS_COLORS[h.assetStatus] || { bg: "#f1f5f9", color: "#64748b" };
+            const s = STATUS_COLORS[h.assetstatus] || { bg: "#f1f5f9", color: "#64748b" };
             return <span style={{ background: s.bg, color: s.color, padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
-              {ASSET_STATUS_OPTIONS[h.assetStatus] || h.assetStatus || "-"}
+              {ASSET_STATUS_OPTIONS[h.assetstatus] || h.assetstatus || "-"}
             </span>;
           }},
-          { label: "GC자산코드",    render: h => <b style={{ fontSize: 13 }}>{h.gcCode || "-"}</b> },
-          { label: "아이메드코드",   render: h => h.imedCode || "-" },
+          { label: "GC자산코드",    render: h => <b style={{ fontSize: 13 }}>{h.gccode || "-"}</b> },
+          { label: "아이메드코드",   render: h => h.imedcode || "-" },
           { label: "팀",    render: h => h.team     || "-" },
-          { label: "사용자", render: h => h.userName || "-" },
-          { label: "모델명", render: h => h.modelName || "-" },
-          { label: "자산구분", render: h => ASSET_TYPE_OPTIONS[h.assetType] || h.assetType || "-" },
+          { label: "사용자", render: h => h.username || "-" },
+          { label: "모델명", render: h => h.modelname || "-" },
+          { label: "자산구분", render: h => ASSET_TYPE_OPTIONS[h.assettype] || h.assettype || "-" },
           { label: "위치",  render: h => h.location || "-" },
           { label: "관리",  render: h => canEdit && (
             <div style={{ display: "flex", gap: 5 }}>
@@ -520,7 +520,7 @@ function HardwareSection({ data, setHardware, addHistory, canEdit, trash, setTra
 
       {/* ── 상세 모달 ── */}
       {modal === "detail" && detailItem && (
-        <Modal title={`상세 정보 — ${detailItem.gcCode || detailItem.modelName || ""}`} onClose={() => setModal(null)}>
+        <Modal title={`상세 정보 — ${detailItem.gccode || detailItem.modelname || ""}`} onClose={() => setModal(null)}>
           <HardwareDetail item={detailItem} />
         </Modal>
       )}
@@ -532,12 +532,12 @@ function HardwareSection({ data, setHardware, addHistory, canEdit, trash, setTra
 // 📋 [하드웨어 폼] 등록/수정 전용 폼
 // ================================================================
 const FORM_SECTIONS = [
-  { title: "📌 기본 정보",    keys: ["num", "assetStatus", "inspectionDate", "gcCode", "imedCode"] },
-  { title: "🌐 네트워크/장치", keys: ["ip", "macAddress", "pcName", "modelName", "assetType", "serialNumber"] },
-  { title: "👤 사용자/위치",  keys: ["team", "userName", "corporation", "location"] },
+  { title: "📌 기본 정보",    keys: ["num", "assetstatus", "inspectiondate", "gccode", "imedcode"] },
+  { title: "🌐 네트워크/장치", keys: ["ip", "macaddress", "pcname", "modelname", "assettype", "serialnumber"] },
+  { title: "👤 사용자/위치",  keys: ["team", "username", "corporation", "location"] },
   { title: "⚙️ 사양",        keys: ["manufacturer", "cpu", "memory", "hdd"] },
-  { title: "🛒 구매 정보",    keys: ["receiptDate", "purchaseDate", "purpose", "purchaseInfo"] },
-  { title: "📎 기타",        keys: ["notes", "monitorCount", "paidLicense"] },
+  { title: "🛒 구매 정보",    keys: ["receiptdate", "purchasedate", "purpose", "purchaseinfo"] },
+  { title: "📎 기타",        keys: ["notes", "monitorcount", "paidlicense"] },
 ];
 
 function HardwareForm({ form, setForm, onSave, loading }) {
@@ -697,7 +697,7 @@ function TrashSection({ trash, setTrash, setHardware, addHistory, canEdit }) {
         setTrash(prev => prev.filter(t => t.id !== trashItem.id));
         const item = Array.isArray(restored) ? restored[0] : restored;
         setHardware(prev => [...prev, item]);
-        const name = restData.gcCode || restData.modelName || "자산";
+        const name = restData.gccode || restData.modelname || "자산";
         addHistory("데이터 복구", "assets", item?.id, name, "복구됨");
       })
       .catch(err => alert("복구 오류: " + err.message));
@@ -708,10 +708,10 @@ function TrashSection({ trash, setTrash, setHardware, addHistory, canEdit }) {
       <h2 style={{ marginBottom: 16 }}>휴지통 ({trash.length}건)</h2>
       <ResponsiveTable
         cols={[
-          { label: "GC자산코드", render: i => { const d=getItemData(i); return d.gcCode || d.modelName || "-"; } },
+          { label: "GC자산코드", render: i => { const d=getItemData(i); return d.gccode || d.modelname || "-"; } },
           { label: "팀",         render: i => getItemData(i).team     || "-" },
-          { label: "사용자",     render: i => getItemData(i).userName || "-" },
-          { label: "자산구분",   render: i => ASSET_TYPE_OPTIONS[getItemData(i).assetType]   || "-" },
+          { label: "사용자",     render: i => getItemData(i).username || "-" },
+          { label: "자산구분",   render: i => ASSET_TYPE_OPTIONS[getItemData(i).assettype]   || "-" },
           { label: "삭제일",     render: i => fDateTime(i.deletedAt) },
           { label: "관리",       render: i => canEdit && <Btn onClick={() => restore(i)} variant="warning">복구</Btn> },
         ]}
