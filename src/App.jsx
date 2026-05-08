@@ -277,9 +277,41 @@ function DashboardSection({ hw, history, isMobile }) {
 
 // ================================================================
 // 🖥️ [하드웨어] 메인 섹션
+// 전체 컬럼 목록 (key, label)
+const ALL_COLS = [
+  { key: "num",           label: "번호"         },
+  { key: "assetstatus",   label: "자산상태"      },
+  { key: "inspectiondate",label: "실사날짜"      },
+  { key: "gccode",        label: "GC자산코드"    },
+  { key: "imedcode",      label: "아이메드코드"   },
+  { key: "serialnumber",  label: "제조번호"      },
+  { key: "ip",            label: "IP"           },
+  { key: "team",          label: "팀(부서명)"    },
+  { key: "username",      label: "사용자"        },
+  { key: "pcname",        label: "PC이름"       },
+  { key: "modelname",     label: "모델명"        },
+  { key: "assettype",     label: "자산구분"      },
+  { key: "notes",         label: "비고(이력관리)" },
+  { key: "macaddress",    label: "MAC Address"  },
+  { key: "receiptdate",   label: "수령일"        },
+  { key: "purchasedate",  label: "구입일"        },
+  { key: "manufacturer",  label: "제조사"        },
+  { key: "cpu",           label: "CPU"          },
+  { key: "memory",        label: "Memory"       },
+  { key: "hdd",           label: "하드디스크"    },
+  { key: "purpose",       label: "목적/기능"     },
+  { key: "corporation",   label: "법인"          },
+  { key: "location",      label: "위치(건물)"    },
+  { key: "purchaseinfo",  label: "구매정보"      },
+  { key: "monitorcount",  label: "모니터수량"    },
+  { key: "paidlicense",   label: "유료라이선스"  },
+];
+// 기본으로 보여줄 컬럼
+const DEFAULT_VISIBLE = new Set(["num","assetstatus","gccode","team","username","modelname","assettype","location"]);
+
 // ================================================================
 function HardwareSection({ data, setHardware, addHistory, canEdit, trash, setTrash }) {
-  const [modal,        setModal]        = useState(null); // null | "add" | "edit" | "detail"
+  const [modal,        setModal]        = useState(null);
   const [form,         setForm]         = useState({});
   const [detailItem,   setDetailItem]   = useState(null);
   const [loading,      setLoading]      = useState(false);
@@ -287,7 +319,30 @@ function HardwareSection({ data, setHardware, addHistory, canEdit, trash, setTra
   const [searchText,   setSearchText]   = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterType,   setFilterType]   = useState("");
+  const [showColMenu,  setShowColMenu]  = useState(false);  // 컬럼 선택 패널 열림/닫힘
+  const [visibleCols,  setVisibleCols]  = useState(DEFAULT_VISIBLE); // 보이는 컬럼 Set
   const fileInputRef = useRef(null);
+  const colMenuRef   = useRef(null);
+
+  // 컬럼 메뉴 바깥 클릭 시 닫기
+  useEffect(() => {
+    const handler = (e) => { if (colMenuRef.current && !colMenuRef.current.contains(e.target)) setShowColMenu(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // 컬럼 토글
+  const toggleCol = (key) => {
+    setVisibleCols(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  };
+  // 전체 선택/해제
+  const toggleAll = (selectAll) => {
+    setVisibleCols(selectAll ? new Set(ALL_COLS.map(c => c.key)) : new Set(["gccode"]));
+  };
 
   // ── 검색/필터 ──
   const filtered = data.filter(h => {
@@ -451,6 +506,44 @@ function HardwareSection({ data, setHardware, addHistory, canEdit, trash, setTra
             </Btn>
             <Btn onClick={exportCSV}>⬇️ CSV</Btn>
             <Btn onClick={exportExcel}>⬇️ Excel</Btn>
+
+            {/* 컬럼 선택 버튼 */}
+            <div ref={colMenuRef} style={{ position: "relative" }}>
+              <Btn onClick={() => setShowColMenu(v => !v)}>
+                🔧 컬럼 선택 {visibleCols.size}/{ALL_COLS.length}
+              </Btn>
+              {showColMenu && (
+                <div style={{
+                  position: "absolute", top: "calc(100% + 6px)", right: 0,
+                  background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14,
+                  boxShadow: "0 8px 32px rgba(0,0,0,0.12)", zIndex: 500,
+                  padding: 16, width: 260,
+                }}>
+                  {/* 전체 선택/해제 */}
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid #f0f0f0" }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>표시할 컬럼 선택</span>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => toggleAll(true)}  style={{ fontSize: 11, color: "#0f6e56", border: "none", background: "none", cursor: "pointer", fontWeight: 600 }}>전체</button>
+                      <button onClick={() => toggleAll(false)} style={{ fontSize: 11, color: "#cf1322", border: "none", background: "none", cursor: "pointer", fontWeight: 600 }}>초기화</button>
+                    </div>
+                  </div>
+                  {/* 컬럼 체크박스 목록 */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2, maxHeight: 320, overflowY: "auto" }}>
+                    {ALL_COLS.map(c => (
+                      <label key={c.key} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 4px", borderRadius: 6, cursor: "pointer", fontSize: 12,
+                        background: visibleCols.has(c.key) ? "#e8f5e9" : "transparent",
+                        color: visibleCols.has(c.key) ? "#0f6e56" : "#64748b", fontWeight: visibleCols.has(c.key) ? 600 : 400,
+                      }}>
+                        <input type="checkbox" checked={visibleCols.has(c.key)} onChange={() => toggleCol(c.key)}
+                          style={{ accentColor: "#0f6e56", width: 13, height: 13 }} />
+                        {c.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {canEdit && <Btn onClick={() => { setForm({ assetstatus: "active", assettype: "laptop" }); setModal("add"); }} variant="primary">+ 등록</Btn>}
           </div>
         </div>
@@ -482,34 +575,64 @@ function HardwareSection({ data, setHardware, addHistory, canEdit, trash, setTra
         </div>
       </div>
 
-      {/* ── 테이블 ── */}
-      <ResponsiveTable
-        cols={[
-          { label: "번호",   render: h => <span style={{ color: "#94a3b8", fontSize: 12 }}>{h.num || "-"}</span> },
-          { label: "자산상태", render: h => {
+      {/* ── 테이블 (전체 컬럼) ── */}
+      {(() => {
+        // 전체 컬럼 정의
+        const allColDefs = [
+          { key: "num",           label: "번호",          render: h => <span style={{ color: "#64748b", fontSize: 12 }}>{h.num || "-"}</span> },
+          { key: "assetstatus",   label: "자산상태",       render: h => {
             const s = STATUS_COLORS[h.assetstatus] || { bg: "#f1f5f9", color: "#64748b" };
-            return <span style={{ background: s.bg, color: s.color, padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
+            return <span style={{ background: s.bg, color: s.color, padding: "3px 8px", borderRadius: 20, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
               {ASSET_STATUS_OPTIONS[h.assetstatus] || h.assetstatus || "-"}
             </span>;
           }},
-          { label: "GC자산코드",    render: h => <b style={{ fontSize: 13 }}>{h.gccode || "-"}</b> },
-          { label: "아이메드코드",   render: h => h.imedcode || "-" },
-          { label: "팀",    render: h => h.team     || "-" },
-          { label: "사용자", render: h => h.username || "-" },
-          { label: "모델명", render: h => h.modelname || "-" },
-          { label: "자산구분", render: h => ASSET_TYPE_OPTIONS[h.assettype] || h.assettype || "-" },
-          { label: "위치",  render: h => h.location || "-" },
-          { label: "관리",  render: h => canEdit && (
-            <div style={{ display: "flex", gap: 5 }}>
-              <Btn onClick={() => { setDetailItem(h); setModal("detail"); }} style={{ fontSize: 11, padding: "6px 10px" }}>상세</Btn>
-              <Btn onClick={() => { setForm(h); setModal("edit"); }}         style={{ fontSize: 11, padding: "6px 10px" }}>수정</Btn>
-              <Btn onClick={() => deleteItem(h)} variant="danger"           style={{ fontSize: 11, padding: "6px 10px" }}>삭제</Btn>
+          { key: "inspectiondate",label: "실사날짜",       render: h => <span style={{ fontSize: 12 }}>{h.inspectiondate || "-"}</span> },
+          { key: "gccode",        label: "GC자산코드",     render: h => <b style={{ fontSize: 12 }}>{h.gccode || "-"}</b> },
+          { key: "imedcode",      label: "아이메드코드",    render: h => <span style={{ fontSize: 12 }}>{h.imedcode || "-"}</span> },
+          { key: "serialnumber",  label: "제조번호",        render: h => <span style={{ fontSize: 12 }}>{h.serialnumber || "-"}</span> },
+          { key: "ip",            label: "IP",             render: h => <span style={{ fontSize: 12 }}>{h.ip || "-"}</span> },
+          { key: "team",          label: "팀(부서명)",      render: h => <span style={{ fontSize: 12 }}>{h.team || "-"}</span> },
+          { key: "username",      label: "사용자",          render: h => <span style={{ fontSize: 12 }}>{h.username || "-"}</span> },
+          { key: "pcname",        label: "PC이름",          render: h => <span style={{ fontSize: 12 }}>{h.pcname || "-"}</span> },
+          { key: "modelname",     label: "모델명",          render: h => <span style={{ fontSize: 12 }}>{h.modelname || "-"}</span> },
+          { key: "assettype",     label: "자산구분",        render: h => <span style={{ fontSize: 12 }}>{ASSET_TYPE_OPTIONS[h.assettype] || h.assettype || "-"}</span> },
+          { key: "notes",         label: "비고(이력관리)",  render: h => <span style={{ fontSize: 12, maxWidth: 140, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.notes || "-"}</span> },
+          { key: "macaddress",    label: "MAC Address",    render: h => <span style={{ fontSize: 11 }}>{h.macaddress || "-"}</span> },
+          { key: "receiptdate",   label: "수령일",          render: h => <span style={{ fontSize: 12 }}>{h.receiptdate || "-"}</span> },
+          { key: "purchasedate",  label: "구입일",          render: h => <span style={{ fontSize: 12 }}>{h.purchasedate || "-"}</span> },
+          { key: "manufacturer",  label: "제조사",          render: h => <span style={{ fontSize: 12 }}>{h.manufacturer || "-"}</span> },
+          { key: "cpu",           label: "CPU",            render: h => <span style={{ fontSize: 12 }}>{h.cpu || "-"}</span> },
+          { key: "memory",        label: "Memory",         render: h => <span style={{ fontSize: 12 }}>{h.memory || "-"}</span> },
+          { key: "hdd",           label: "하드디스크",      render: h => <span style={{ fontSize: 12 }}>{h.hdd || "-"}</span> },
+          { key: "purpose",       label: "목적/기능",       render: h => <span style={{ fontSize: 12 }}>{h.purpose || "-"}</span> },
+          { key: "corporation",   label: "법인",            render: h => <span style={{ fontSize: 12 }}>{h.corporation || "-"}</span> },
+          { key: "location",      label: "위치(건물)",      render: h => <span style={{ fontSize: 12 }}>{h.location || "-"}</span> },
+          { key: "purchaseinfo",  label: "구매정보",        render: h => <span style={{ fontSize: 12 }}>{h.purchaseinfo || "-"}</span> },
+          { key: "monitorcount",  label: "모니터수량",      render: h => <span style={{ fontSize: 12 }}>{h.monitorcount ?? "-"}</span> },
+          { key: "paidlicense",   label: "유료라이선스",    render: h => <span style={{ fontSize: 12 }}>{h.paidlicense || "-"}</span> },
+        ];
+
+        // visibleCols에 있는 컬럼만 필터링 + 관리 버튼 항상 마지막에 추가
+        const visibleColDefs = allColDefs.filter(c => visibleCols.has(c.key));
+        if (canEdit) visibleColDefs.push({
+          key: "__manage", label: "관리",
+          render: h => (
+            <div style={{ display: "flex", gap: 4 }}>
+              <Btn onClick={() => { setDetailItem(h); setModal("detail"); }} style={{ fontSize: 11, padding: "5px 8px" }}>상세</Btn>
+              <Btn onClick={() => { setForm(h); setModal("edit"); }}         style={{ fontSize: 11, padding: "5px 8px" }}>수정</Btn>
+              <Btn onClick={() => deleteItem(h)} variant="danger"           style={{ fontSize: 11, padding: "5px 8px" }}>삭제</Btn>
             </div>
-          )},
-        ]}
-        rows={filtered}
-        empty={searchText || filterStatus || filterType ? "검색 조건에 맞는 항목이 없습니다." : "등록된 자산이 없습니다."}
-      />
+          ),
+        });
+
+        return (
+          <ResponsiveTable
+            cols={visibleColDefs}
+            rows={filtered}
+            empty={searchText || filterStatus || filterType ? "검색 조건에 맞는 항목이 없습니다." : "등록된 자산이 없습니다."}
+          />
+        );
+      })()}
 
       {/* ── 등록/수정 모달 ── */}
       {(modal === "add" || modal === "edit") && (
