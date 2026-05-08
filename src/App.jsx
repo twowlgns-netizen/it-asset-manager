@@ -34,6 +34,7 @@ const HW_TYPES = {
   desktop: "데스크탑",
   monitor: "모니터",
   laptop: "노트북",
+  rf: "RF리더기",
 };
 
 // 👉 상태를 추가하려면 여기에 줄을 추가하세요.
