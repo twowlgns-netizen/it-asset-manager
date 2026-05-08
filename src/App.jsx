@@ -34,7 +34,6 @@ const HW_TYPES = {
   desktop: "데스크탑",
   monitor: "모니터",
   laptop: "노트북",
-  rf: "RF리더기",
 };
 
 // 👉 상태를 추가하려면 여기에 줄을 추가하세요.
@@ -122,8 +121,9 @@ const api = {
   // ── 히스토리(활동 로그) ──
 
   getHistory: () =>
-    fetch(`${BASE_URL}/history?select=*&order=ts.desc`, {
-      headers: HEADERS,
+    fetch(`${BASE_URL}/history?select=*&order=ts.desc&limit=1000000`, {
+      // limit=1000000 : Supabase 기본 상한(1000건)을 제거해 전체 로그를 불러옵니다
+      headers: { ...HEADERS, "Range-Unit": "items", "Range": "0-999999" },
     }).then(safeJson),
 
   addHistory: (data) =>
@@ -349,7 +349,7 @@ function HardwareSection({ data, setHardware, addHistory, canEdit, trash, setTra
     setLoading(true);
 
     const isAdd = modal === "add";
-    const newItem = isAdd ? { ...form } : form;
+    const newItem = isAdd ? { ...form, createdAt: nowISO() } : form;
     const request = isAdd ? api.addHardware(newItem) : api.updateHardware(form.id, form);
 
     request
@@ -445,12 +445,87 @@ function HardwareSection({ data, setHardware, addHistory, canEdit, trash, setTra
 
 
 // ================================================================
-// 📝 [히스토리]
+// 📝 [히스토리] 활동 로그 목록 + 검색
 // ================================================================
 function HistorySection({ history }) {
+  const [query, setQuery] = useState("");         // 검색어
+  const [field, setField] = useState("all");      // 검색 대상 필드
+
+  // 검색 필터 적용
+  const filtered = history.filter((h) => {
+    if (!query.trim()) return true; // 검색어 없으면 전체 표시
+    const q = query.trim().toLowerCase();
+    if (field === "userName") return (h.userName || "").toLowerCase().includes(q);
+    if (field === "action")   return (h.action   || "").toLowerCase().includes(q);
+    if (field === "aName")    return (h.aName    || "").toLowerCase().includes(q);
+    // "all": 모든 필드에서 검색
+    return (
+      (h.userName || "").toLowerCase().includes(q) ||
+      (h.action   || "").toLowerCase().includes(q) ||
+      (h.aName    || "").toLowerCase().includes(q)
+    );
+  });
+
   return (
     <div>
-      <h2 style={{ marginBottom: 20 }}>활동 로그</h2>
+      {/* 상단: 제목 + 전체 건수 */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <h2 style={{ margin: 0 }}>활동 로그</h2>
+        <span style={{ fontSize: 13, color: "#64748b" }}>
+          전체 <b style={{ color: "#0f6e56" }}>{history.length}</b>건
+          {query && ` · 검색결과 ${filtered.length}건`}
+        </span>
+      </div>
+
+      {/* 검색 바 */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        {/* 검색 대상 선택 */}
+        <select
+          value={field}
+          onChange={(e) => setField(e.target.value)}
+          style={{
+            padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd",
+            fontSize: 13, color: "#333", background: "#fff", flexShrink: 0,
+          }}
+        >
+          <option value="all">전체</option>
+          <option value="userName">수행자</option>
+          <option value="action">액션</option>
+          <option value="aName">대상</option>
+        </select>
+
+        {/* 검색어 입력 */}
+        <div style={{ flex: 1, position: "relative" }}>
+          <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 15, color: "#94a3b8" }}>
+            🔍
+          </span>
+          <input
+            type="text"
+            placeholder="검색어를 입력하세요..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            style={{
+              width: "100%", padding: "10px 36px 10px 36px",
+              borderRadius: 10, border: "1px solid #ddd",
+              fontSize: 13, boxSizing: "border-box",
+            }}
+          />
+          {/* X 버튼: 검색어 있을 때만 표시 */}
+          {query && (
+            <button
+              onClick={() => setQuery("")}
+              style={{
+                position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+                background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "#94a3b8",
+              }}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 로그 테이블 */}
       <ResponsiveTable
         cols={[
           { label: "시간",   render: (h) => <span style={{ fontSize: 11 }}>{fDateTime(h.ts)}</span> },
@@ -458,7 +533,8 @@ function HistorySection({ history }) {
           { label: "액션",   key: "action"   },
           { label: "대상",   key: "aName"    },
         ]}
-        rows={history}
+        rows={filtered}
+        empty={query ? `"${query}"에 대한 검색 결과가 없습니다.` : "로그가 없습니다."}
       />
     </div>
   );
