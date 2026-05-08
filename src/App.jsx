@@ -187,7 +187,7 @@ export default function App() {
     <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", height: "100vh", background: "#f8fafc", overflow: "hidden" }}>
       {!isMobile && (
         <div style={{ width: 220, background: "#fff", borderRight: "1px solid #e2e8f0", padding: "24px", display: "flex", flexDirection: "column" }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: "#0f6e56", marginBottom: 32 }}>GCcare IT Asset Manager</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: "#0f6e56", marginBottom: 32 }}>IT Asset Manager</div>
           <div style={{ flex: 1 }}>
             {menuItems.map(m => (
               <div key={m.id} onClick={() => setView(m.id)}
@@ -858,8 +858,8 @@ function LoginPage({ onLogin, users }) {
   return (
     <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f1f5f9" }}>
       <form onSubmit={submit} style={{ width: 340, background: "#fff", padding: 40, borderRadius: 24, boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
-        <h1 style={{ textAlign: "center", color: "#0f6e56", marginBottom: 8, fontSize: 24 }}>Asset Manager</h1>
-        <p style={{ textAlign: "center", color: "#94a3b8", marginBottom: 28, fontSize: 13 }}>GC녹십자아이메드 IT자산관리</p>
+        <h1 style={{ textAlign: "center", color: "#0f6e56", marginBottom: 8, fontSize: 24 }}>IT Asset Manager</h1>
+        <p style={{ textAlign: "center", color: "#94a3b8", marginBottom: 28, fontSize: 13 }}>GC녹십자아이메드 IT자산관리 (시스템운영)</p>
         <input placeholder="아이디" value={id} onChange={e => setId(e.target.value)} required
           style={{ width: "100%", padding: 14, marginBottom: 10, borderRadius: 10, border: "1px solid #eee", fontSize: 14, boxSizing: "border-box" }} />
         <input type="password" placeholder="비밀번호" value={pw} onChange={e => setPw(e.target.value)} required
