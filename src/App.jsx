@@ -26,8 +26,8 @@ const STATUS_BADGE  = {
 };
 
 const INIT_USERS = [
-  { loginId: "admin", password: "admin123", name: "관리자", dept: "IT본부",   role: "admin",    clinic: "all"      },
-  { loginId: "user",  password: "user123",  name: "이영희", dept: "디자인팀", role: "user",     clinic: "gangnam"  },
+  { loginid: "admin", password: "admin123", name: "관리자", dept: "IT본부",   role: "admin",    clinic: "all"      },
+  { loginid: "user",  password: "user123",  name: "이영희", dept: "디자인팀", role: "user",     clinic: "gangnam"  },
 ];
 
 // 하드웨어 필드
@@ -786,7 +786,7 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
   const [loading, setLoading]= useState(false);
 
   const save = () => {
-    if(!form.loginId||!form.name) return alert("아이디와 이름을 입력하세요.");
+    if(!form.loginid||!form.name) return alert("아이디와 이름을 입력하세요.");
     if(modal==="add"&&!form.password) return alert("비밀번호를 입력하세요.");
     setLoading(true);
     const isAdd=modal==="add";
@@ -816,7 +816,7 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
       </div>
       <ResponsiveTable
         cols={[
-          { label:"아이디",   key:"loginId" },
+          { label:"아이디",   key:"loginid" },
           { label:"이름",     key:"name"    },
           { label:"부서",     key:"dept"    },
           { label:"지점",     render:u=>CLINICS[u.clinic]||u.clinic||"-" },
@@ -833,7 +833,7 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
       {(modal==="add"||modal==="edit") && (
         <Modal title={modal==="add"?"계정 등록":"계정 수정"} onClose={()=>setModal(null)}>
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
-            {[{key:"loginId",label:"아이디",type:"text"},{key:"name",label:"이름",type:"text"},{key:"dept",label:"부서",type:"text"}].map(f=>(
+            {[{key:"loginid",label:"아이디",type:"text"},{key:"name",label:"이름",type:"text"},{key:"dept",label:"부서",type:"text"}].map(f=>(
               <label key={f.key} style={{display:"flex",flexDirection:"column",gap:4}}>
                 <span style={{fontSize:12,color:"#64748b"}}>{f.label}</span>
                 <input type={f.type} value={form[f.key]||""} onChange={e=>setForm({...form,[f.key]:e.target.value})} style={inp}/>
@@ -992,7 +992,7 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit }) {
 // ================================================================
 function LoginPage({ onLogin, users }) {
   const [id,setId]=useState(""); const [pw,setPw]=useState("");
-  const submit=e=>{ e.preventDefault(); const user=users.find(u=>u.loginId===id&&u.password===pw); if(user)onLogin(user); else alert("아이디 또는 비밀번호가 틀립니다."); };
+  const submit=e=>{ e.preventDefault(); const user=users.find(u=>u.loginid===id&&u.password===pw); if(user)onLogin(user); else alert("아이디 또는 비밀번호가 틀립니다."); };
   return (
     <div style={{height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f1f5f9"}}>
       <form onSubmit={submit} style={{width:340,background:"#fff",padding:40,borderRadius:24,boxShadow:"0 4px 24px rgba(0,0,0,0.08)"}}>
