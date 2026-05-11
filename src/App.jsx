@@ -999,7 +999,11 @@ function QRScanSection({ hw }) {
           if (code?.data) {
             const text = code.data.trim();
             setScanned(text);
-            const found = hw.find(h => (h.imedcode||"").trim() === text);
+            // 아이메드코드(imedcode)가 QR코드 값과 일치하는 자산 검색
+            // 예: QR코드 값 "GCSF-PC-039" → imedcode 컬럼에서 검색
+            const found = hw.find(h =>
+              (h.imedcode || "").trim().toUpperCase() === text.toUpperCase()
+            );
             setAsset(found || null);
             setNotFound(!found);
             stopScan(); return;
@@ -1019,7 +1023,16 @@ function QRScanSection({ hw }) {
     <div>
       <QRScannerLoader onLoad={() => setJsQRReady(true)} />
       <h2 style={{ fontSize:22, fontWeight:700, marginBottom:6 }}>📷 QR 스캔</h2>
-      <p style={{ color:"#64748b", fontSize:13, marginBottom:20 }}>아이메드 자산코드가 담긴 QR코드를 카메라로 인식하면 자산 정보를 바로 확인할 수 있습니다.</p>
+      {/* 안내 박스 */}
+      <div style={{ background:"#e8f5e9", borderRadius:14, padding:"14px 18px", marginBottom:20, border:"1px solid #a7d7a8" }}>
+        <div style={{ fontSize:13, fontWeight:700, color:"#0f6e56", marginBottom:6 }}>📋 사용 방법</div>
+        <div style={{ fontSize:12, color:"#334155", lineHeight:1.8 }}>
+          1. 자산 스티커에서 QR코드를 찾으세요<br/>
+          2. QR코드 값 = <b>아이메드 코드</b> (예: GCSF-PC-039)<br/>
+          3. 스캔 시작 버튼을 누르고 카메라를 QR코드에 갖다 대세요<br/>
+          4. 자동 인식 후 자산 상세정보가 표시됩니다
+        </div>
+      </div>
 
       {/* 스캔 영역 */}
       {!scanned && (
@@ -1109,7 +1122,10 @@ function QRScanSection({ hw }) {
             <div style={{ background:"#fff1f0", borderRadius:16, padding:30, textAlign:"center", border:"1px solid #ffa39e" }}>
               <div style={{ fontSize:40, marginBottom:12 }}>❌</div>
               <div style={{ fontSize:16, fontWeight:700, color:"#cf1322", marginBottom:6 }}>자산을 찾을 수 없습니다</div>
-              <div style={{ fontSize:13, color:"#64748b" }}>아이메드코드 <b>{scanned}</b> 에 해당하는 자산이 없습니다.</div>
+              <div style={{ fontSize:13, color:"#64748b", marginBottom:8 }}>
+                아이메드 코드 <b style={{color:"#cf1322"}}>{scanned}</b> 에 해당하는 자산이 없습니다.
+              </div>
+              <div style={{ fontSize:12, color:"#94a3b8" }}>DB에 해당 아이메드 코드가 등록되어 있는지 확인해주세요.</div>
             </div>
           )}
         </div>
