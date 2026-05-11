@@ -25,10 +25,7 @@ const STATUS_BADGE  = {
   expired:        { bg: "#fff1f0", color: "#cf1322" },
 };
 
-const INIT_USERS = [
-  { loginid: "admin", password: "admin123", name: "관리자", dept: "IT본부",   role: "admin",    clinic: "all"      },
-  { loginid: "user",  password: "user123",  name: "이영희", dept: "디자인팀", role: "user",     clinic: "gangnam"  },
-];
+// 사용자 계정은 Supabase DB에서만 관리합니다.
 
 // 하드웨어 필드
 const HW_FIELDS = [
@@ -132,7 +129,7 @@ export default function App() {
   const [isMobile,setIsMobile]= useState(typeof window!=="undefined" ? window.innerWidth<768 : false);
   const [hw,      setHw]      = useState([]);
   const [sw,      setSw]      = useState([]);
-  const [users,   setUsers]   = useState(INIT_USERS);
+  const [users,   setUsers]   = useState([]);
   const [history, setHistory] = useState([]);
   const [trash,   setTrash]   = useState([]);
 
@@ -142,7 +139,7 @@ export default function App() {
   const fetchAll = useCallback(() => {
     api.getHW().then(d=>setHw(Array.isArray(d)?d:[])).catch(console.error);
     api.getSW().then(d=>setSw(Array.isArray(d)?d:[])).catch(console.error);
-    api.getUsers().then(d=>setUsers(Array.isArray(d)&&d.length?d:INIT_USERS)).catch(console.error);
+    api.getUsers().then(d=>setUsers(Array.isArray(d)?d:[])).catch(console.error);
     api.getHistory().then(d=>{ const l=Array.isArray(d)?d:[]; setHistory(l.sort((a,b)=>new Date(b.ts)-new Date(a.ts))); }).catch(console.error);
     api.getTrash().then(d=>setTrash(Array.isArray(d)?d:[])).catch(console.error);
   }, []);
