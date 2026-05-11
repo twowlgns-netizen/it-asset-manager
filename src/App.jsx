@@ -167,6 +167,7 @@ export default function App() {
     { id: "hardware",  label: "장비",     icon: "🖥️" },
     { id: "software",  label: "소프트웨어", icon: "💿" },
     { id: "users",     label: "사용자",   icon: "👤" },
+    { id: "qrscan",    label: "QR 스캔",  icon: "📷" },
     { id: "history",   label: "로그",     icon: "📝" },
     { id: "trash",     label: "휴지통",   icon: "🗑️" },
   ];
@@ -204,6 +205,7 @@ export default function App() {
           {view==="software"   && <SoftwareSection   data={sw} setSw={setSw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} />}
           {view==="users"      && <UsersSection      users={users} setUsers={setUsers} addHistory={addHistory} isAdmin={isAdmin} currentUser={currentUser} />}
           {view==="history"    && <HistorySection    history={history} />}
+          {view==="qrscan"    && <QRScanSection     hw={hw} />}
           {view==="trash"      && <TrashSection      trash={trash} setTrash={setTrash} setHw={setHw} setSw={setSw} addHistory={addHistory} canEdit={canEdit} />}
         </main>
       </div>
@@ -338,6 +340,11 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
     if (!form.gccode && !form.modelname && !form.imedcode) return alert("GC자산코드 또는 모델명을 입력하세요.");
     setLoading(true);
     const isAdd = modal==="add";
+    // 번호 자동입력: 등록 시 현재 최대 번호 + 1
+    if (isAdd && !form.num) {
+      const maxNum = Math.max(0, ...data.map(h => parseInt(h.num) || 0));
+      form = { ...form, num: maxNum + 1 };
+    }
     const before = isAdd ? "" : JSON.stringify(data.find(h=>h.id===form.id)||{});
     const req = isAdd ? api.addHW(form) : api.updateHW(form.id, form);
     req.then(()=>api.getHW()).then(list=>{
@@ -930,6 +937,182 @@ function HistorySection({ history }) {
             ))}
           </div>
         </Modal>
+      )}
+    </div>
+  );
+}
+
+
+// ================================================================
+// 📷 [QR 스캔] 스마트폰 카메라로 아이메드코드 인식
+// ================================================================
+function QRScannerLoader({ onLoad }) {
+  useEffect(() => {
+    if (window.jsQR) { onLoad(); return; }
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js";
+    s.onload = onLoad;
+    s.onerror = () => console.error("jsQR 로드 실패");
+    document.head.appendChild(s);
+  }, []);
+  return null;
+}
+
+function QRScanSection({ hw }) {
+  const [jsQRReady, setJsQRReady] = useState(!!window.jsQR);
+  const [scanning,  setScanning]  = useState(false);
+  const [scanned,   setScanned]   = useState(null);   // 스캔된 QR 텍스트
+  const [asset,     setAsset]     = useState(null);   // 찾은 자산
+  const [notFound,  setNotFound]  = useState(false);
+  const [camError,  setCamError]  = useState("");
+  const videoRef  = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+  const animRef   = useRef(null);
+
+  const stopScan = () => {
+    if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+    if (animRef.current)   cancelAnimationFrame(animRef.current);
+    streamRef.current = null;
+    setScanning(false);
+  };
+
+  useEffect(() => () => stopScan(), []);
+
+  const startScan = async () => {
+    setCamError(""); setScanned(null); setAsset(null); setNotFound(false);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+      streamRef.current = stream;
+      if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
+      setScanning(true);
+      const tick = () => {
+        const v = videoRef.current; const c = canvasRef.current;
+        if (!v || !c || v.readyState < 2) { animRef.current = requestAnimationFrame(tick); return; }
+        c.width = v.videoWidth; c.height = v.videoHeight;
+        const ctx = c.getContext("2d"); ctx.drawImage(v, 0, 0);
+        const img = ctx.getImageData(0, 0, c.width, c.height);
+        if (window.jsQR) {
+          const code = window.jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" });
+          if (code?.data) {
+            const text = code.data.trim();
+            setScanned(text);
+            const found = hw.find(h => (h.imedcode||"").trim() === text);
+            setAsset(found || null);
+            setNotFound(!found);
+            stopScan(); return;
+          }
+        }
+        animRef.current = requestAnimationFrame(tick);
+      };
+      animRef.current = requestAnimationFrame(tick);
+    } catch (err) {
+      setCamError("카메라 접근 오류: " + err.message);
+    }
+  };
+
+  const reset = () => { setScanned(null); setAsset(null); setNotFound(false); setCamError(""); };
+
+  return (
+    <div>
+      <QRScannerLoader onLoad={() => setJsQRReady(true)} />
+      <h2 style={{ fontSize:22, fontWeight:700, marginBottom:6 }}>📷 QR 스캔</h2>
+      <p style={{ color:"#64748b", fontSize:13, marginBottom:20 }}>아이메드 자산코드가 담긴 QR코드를 카메라로 인식하면 자산 정보를 바로 확인할 수 있습니다.</p>
+
+      {/* 스캔 영역 */}
+      {!scanned && (
+        <div style={{ textAlign:"center" }}>
+          <div style={{ position:"relative", display:"inline-block", borderRadius:20, overflow:"hidden", background:"#000",
+            width:"100%", maxWidth:400, aspectRatio:"1/1", marginBottom:16 }}>
+            <video ref={videoRef} playsInline muted style={{ width:"100%", height:"100%", objectFit:"cover", display:scanning?"block":"none" }} />
+            {!scanning && (
+              <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:12 }}>
+                <span style={{ fontSize:64 }}>📷</span>
+                <span style={{ color:"#fff", fontSize:14 }}>카메라가 여기에 표시됩니다</span>
+              </div>
+            )}
+            {/* 스캔 가이드 박스 */}
+            {scanning && (
+              <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
+                <div style={{ width:"60%", height:"60%", border:"3px solid #0f6e56", borderRadius:12, boxShadow:"0 0 0 9999px rgba(0,0,0,0.35)" }} />
+              </div>
+            )}
+          </div>
+          <canvas ref={canvasRef} style={{ display:"none" }} />
+
+          {camError && <div style={{ color:"#cf1322", fontSize:13, marginBottom:12, padding:"10px 16px", background:"#fff1f0", borderRadius:10 }}>{camError}</div>}
+
+          {!scanning
+            ? <Btn onClick={startScan} variant="primary" disabled={!jsQRReady} style={{ fontSize:15, padding:"14px 40px", borderRadius:14 }}>
+                {jsQRReady ? "📷 스캔 시작" : "라이브러리 로딩 중..."}
+              </Btn>
+            : <Btn onClick={stopScan} variant="danger" style={{ fontSize:15, padding:"14px 40px", borderRadius:14 }}>⏹ 중지</Btn>
+          }
+          {scanning && <p style={{ color:"#64748b", fontSize:12, marginTop:12 }}>QR코드를 카메라 중앙 박스에 맞춰주세요</p>}
+        </div>
+      )}
+
+      {/* 스캔 결과 */}
+      {scanned && (
+        <div>
+          <div style={{ background:"#f8fafc", borderRadius:14, padding:"14px 18px", marginBottom:16, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <div>
+              <div style={{ fontSize:11, color:"#94a3b8", marginBottom:3 }}>인식된 코드</div>
+              <div style={{ fontSize:16, fontWeight:700, color:"#0f6e56" }}>{scanned}</div>
+            </div>
+            <Btn onClick={reset} style={{ fontSize:12 }}>🔄 다시 스캔</Btn>
+          </div>
+
+          {/* 자산 정보 카드 */}
+          {asset ? (
+            <div style={{ background:"#fff", borderRadius:20, border:"2px solid #0f6e56", padding:24 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
+                <h3 style={{ margin:0, fontSize:18, color:"#0f6e56" }}>✅ 자산 정보</h3>
+                {(() => { const s = STATUS_BADGE[asset.assetstatus]||{bg:"#f1f5f9",color:"#64748b"};
+                  return <span style={{ background:s.bg, color:s.color, padding:"4px 14px", borderRadius:20, fontSize:12, fontWeight:700 }}>{ASSET_STATUS[asset.assetstatus]||asset.assetstatus}</span>; })()}
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                {[
+                  { label:"GC자산코드",   value: asset.gccode      },
+                  { label:"아이메드코드",  value: asset.imedcode    },
+                  { label:"모델명",        value: asset.modelname   },
+                  { label:"자산구분",      value: ASSET_TYPES[asset.assettype]||asset.assettype },
+                  { label:"제조번호",      value: asset.serialnumber},
+                  { label:"IP",           value: asset.ip          },
+                  { label:"팀(부서명)",    value: asset.team        },
+                  { label:"사용자",        value: asset.username    },
+                  { label:"지점",          value: CLINICS[asset.clinic]||asset.clinic },
+                  { label:"위치",          value: asset.location    },
+                  { label:"제조사",        value: asset.manufacturer},
+                  { label:"CPU",          value: asset.cpu         },
+                  { label:"Memory",       value: asset.memory      },
+                  { label:"하드디스크",    value: asset.hdd         },
+                  { label:"수령일",        value: asset.receiptdate },
+                  { label:"구입일",        value: asset.purchasedate},
+                ].filter(r => r.value).map((row, i) => (
+                  <div key={i} style={{ background:"#f8fafc", borderRadius:10, padding:"10px 12px" }}>
+                    <div style={{ fontSize:11, color:"#94a3b8", marginBottom:3 }}>{row.label}</div>
+                    <div style={{ fontSize:13, fontWeight:600, color:"#1e293b", wordBreak:"break-all" }}>{row.value}</div>
+                  </div>
+                ))}
+              </div>
+              {asset.notes && (
+                <div style={{ marginTop:12, background:"#fffbe6", borderRadius:10, padding:"10px 14px" }}>
+                  <div style={{ fontSize:11, color:"#94a3b8", marginBottom:3 }}>비고(이력관리)</div>
+                  <div style={{ fontSize:13, color:"#334155" }}>{asset.notes}</div>
+                </div>
+              )}
+            </div>
+          ) : notFound && (
+            <div style={{ background:"#fff1f0", borderRadius:16, padding:30, textAlign:"center", border:"1px solid #ffa39e" }}>
+              <div style={{ fontSize:40, marginBottom:12 }}>❌</div>
+              <div style={{ fontSize:16, fontWeight:700, color:"#cf1322", marginBottom:6 }}>자산을 찾을 수 없습니다</div>
+              <div style={{ fontSize:13, color:"#64748b" }}>아이메드코드 <b>{scanned}</b> 에 해당하는 자산이 없습니다.</div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
