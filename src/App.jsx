@@ -121,6 +121,18 @@ const api = {
 // 🏠 [메인 앱]
 // ================================================================
 export default function App() {
+  useEffect(() => {
+    const style = document.createElement("style");
+    style.textContent = `
+      /* 테이블 가로 스크롤바 항상 표시 */
+      .hw-table-wrap::-webkit-scrollbar { height: 10px; }
+      .hw-table-wrap::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 0 0 14px 14px; }
+      .hw-table-wrap::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 10px; }
+      .hw-table-wrap::-webkit-scrollbar-thumb:hover { background: #64748b; }
+    `;
+    document.head.appendChild(style);
+    return () => document.head.removeChild(style);
+  }, []);
   const [isLoggedIn,  setIsLoggedIn]  = useState(() => localStorage.getItem("isLoggedIn") === "true");
   const [currentUser, setCurrentUser] = useState(() => { const s = localStorage.getItem("currentUser"); return s ? JSON.parse(s) : null; });
   const [view,    setView]    = useState("dashboard");
@@ -1564,7 +1576,7 @@ function ResponsiveTable({cols,rows,empty="데이터가 없습니다."}){
   };
 
   return (
-    <div style={{background:"#fff",borderRadius:14,border:"1px solid #eee",overflowX:"auto"}}>
+    <div className="hw-table-wrap" style={{background:"#fff",borderRadius:14,border:"1px solid #eee",overflowX:"scroll",overflowY:"visible",scrollbarWidth:"thin",scrollbarColor:"#94a3b8 #f1f5f9"}}>
       <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:colWidths.reduce((a,b)=>a+b,0)}}>
         <colgroup>
           {colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}
