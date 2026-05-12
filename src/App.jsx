@@ -1,11 +1,11 @@
+import { useState, useEffect, useCallback, useRef } from "react";
+
 // ================================================================
 // 🔑 Supabase 연결 설정
 // ================================================================
 const BASE_URL   = "https://djykkruijwgckiqqqlpp.supabase.co/rest/v1";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqeWtrcnVpandnY2tpcXFxbHBwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwODU5MDIsImV4cCI6MjA5MzY2MTkwMn0.wASj9FFOnmYMc3xJcGVuWSK3XreWYi9x3GToyAC6cEI";
 const H = { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" };
-
-import { useState, useEffect, useCallback, useRef } from "react";
 
 // ================================================================
 // ⚙️ 상수
@@ -349,19 +349,20 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
     setLoading(true);
     const isAdd = modal==="add";
     // 번호 자동입력: 등록 시 현재 최대 번호 + 1
+    let formData = form;
     if (isAdd && !form.num) {
       const maxNum = Math.max(0, ...data.map(h => parseInt(h.num) || 0));
-      form = { ...form, num: maxNum + 1 };
+      formData = { ...form, num: maxNum + 1 };
     }
-    const before = isAdd ? "" : JSON.stringify(data.find(h=>h.id===form.id)||{});
-    const req = isAdd ? api.addHW(form) : api.updateHW(form.id, form);
+    const before = isAdd ? "" : JSON.stringify(data.find(h=>h.id===formData.id)||{});
+    const req = isAdd ? api.addHW(formData) : api.updateHW(formData.id, formData);
     req.then(()=>api.getHW()).then(list=>{
       const fresh = Array.isArray(list)?list:[];
       setHw(fresh);
-      const name = form.gccode||form.modelname||form.imedcode||"자산";
-      const after = JSON.stringify(form);
-      if (isAdd) { const c=fresh.find(h=>h.gccode===form.gccode); addHistory("하드웨어 등록","hardware",c?.id??"",name,"신규 등록","",after); }
-      else         addHistory("하드웨어 수정","hardware",form.id,name,"정보 수정",before,after);
+      const name = formData.gccode||formData.modelname||formData.imedcode||"자산";
+      const after = JSON.stringify(formData);
+      if (isAdd) { const c=fresh.find(h=>h.gccode===formData.gccode); addHistory("하드웨어 등록","hardware",c?.id??"",name,"신규 등록","",after); }
+      else         addHistory("하드웨어 수정","hardware",formData.id,name,"정보 수정",before,after);
       setModal(null);
     }).catch(err=>alert(`오류: ${err.message}`)).finally(()=>setLoading(false));
   };
@@ -379,21 +380,20 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
       }).catch(err=>alert("삭제 오류: "+err.message));
   };
 
-  // 가져오기 양식 다운로드 (헤더만 있는 빈 CSV)
+  // 📋 가져오기 양식 다운로드
   const downloadTemplate = () => {
     const header = HW_FIELDS.map(f => f.label).join(",");
-    // 예시 행 1개 포함
     const example = HW_FIELDS.map(f => {
       const ex = {
-        "번호":"1", "자산상태":"사용중", "지점":"강남의원", "실사날짜":"2025-01-15",
-        "GC자산코드":"GCI-NT-001", "아이메드 자산코드":"GCSF-PC-001",
-        "제조번호":"SN123456", "IP":"192.168.1.100", "팀(부서명)":"HIS개발팀",
-        "사용자":"홍길동", "PC 이름":"O034052", "모델명":"NT901X5J",
-        "자산구분":"노트북", "비고(이력관리)":"정상사용중", "MAC Address":"AA:BB:CC:DD:EE:FF",
-        "자산 수령일":"2023-01-01", "구입일자":"2023-01-01", "제조사":"삼성",
-        "CPU":"i5-7200U", "Memory":"8GB", "하드디스크":"SSD 256GB",
-        "목적/기능":"업무용", "법인":"GC케어", "위치(건물)":"여의도파크원",
-        "구매정보(전자결재)":"전자결재001", "모니터 수량":"1", "유료 라이선스":"Windows11"
+        "번호":"1","자산상태":"사용중","지점":"강남의원","실사날짜":"2025-01-15",
+        "GC자산코드":"GCI-NT-001","아이메드 자산코드":"GCSF-PC-001",
+        "제조번호":"SN123456","IP":"192.168.1.100","팀(부서명)":"HIS개발팀",
+        "사용자":"홍길동","PC 이름":"O034052","모델명":"NT901X5J",
+        "자산구분":"노트북","비고(이력관리)":"정상사용중","MAC Address":"AA:BB:CC:DD:EE:FF",
+        "자산 수령일":"2023-01-01","구입일자":"2023-01-01","제조사":"삼성",
+        "CPU":"i5-7200U","Memory":"8GB","하드디스크":"SSD 256GB",
+        "목적/기능":"업무용","법인":"GC케어","위치(건물)":"여의도파크원",
+        "구매정보(전자결재)":"전자결재001","모니터 수량":"1","유료 라이선스":"Windows11"
       };
       return `"${(ex[f.label]||"").replace(/"/g,'""')}"`;
     }).join(",");
@@ -965,29 +965,6 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
   const [modal,   setModal]  = useState(null);
   const [form,    setForm]   = useState({});
   const [loading, setLoading]= useState(false);
-
-  if (!isAdmin) return (
-    <div>
-      <h2 style={{fontSize:20,marginBottom:16}}>사용자 계정 ({users.length}명)</h2>
-      <div style={{background:"#fffbe6",border:"1px solid #ffe58f",borderRadius:14,padding:"16px 20px",marginBottom:16,display:"flex",gap:12,alignItems:"center"}}>
-        <span style={{fontSize:22}}>🔒</span>
-        <div>
-          <div style={{fontWeight:700,fontSize:14,color:"#d48806",marginBottom:3}}>접근 제한</div>
-          <div style={{fontSize:13,color:"#64748b"}}>계정 등록·수정·삭제는 <b>관리자</b>만 가능합니다. 목록은 조회만 가능합니다.</div>
-        </div>
-      </div>
-      <ResponsiveTable
-        cols={[
-          { label:"아이디", key:"loginid" },
-          { label:"이름",   key:"name"    },
-          { label:"부서",   key:"dept"    },
-          { label:"지점",   render:u=>CLINICS[u.clinic]||u.clinic||"-" },
-          { label:"권한",   render:u=>{ const r={admin:{bg:"#e8f5e9",c:"#0f6e56"},user:{bg:"#eff6ff",c:"#2563eb"},readonly:{bg:"#f1f5f9",c:"#64748b"}}[u.role]||{bg:"#f1f5f9",c:"#64748b"}; return <span style={{background:r.bg,color:r.c,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700}}>{ROLES[u.role]||u.role}</span>; }},
-        ]}
-        rows={users} empty="사용자가 없습니다."
-      />
-    </div>
-  );
 
   // 읽기전용 또는 일반사용자는 관리 불가
   if(!isAdmin) return (
