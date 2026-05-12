@@ -287,7 +287,7 @@ function DashboardSection({ hw, sw, history, isMobile }) {
           { label:"소프트웨어",  value:sw.length,               color:"#7c3aed", badge:null },
           { label:"활동 로그",   value:history.length,          color:"#0891b2", badge:null },
         ].map(c => (
-          <div key={typeof c.label==="function"?c.key||Math.random():c.label} style={{ background:"#fff", padding:"14px 16px", borderRadius:16, border:"1px solid #e2e8f0", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <div key={typeof c.label==="function"?"__fn__":c.label} style={{ background:"#fff", padding:"14px 16px", borderRadius:16, border:"1px solid #e2e8f0", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
             <div>
               <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>{c.label}</div>
               <div style={{ fontSize:24, fontWeight:800, color:c.color }}>{c.value}</div>
@@ -1697,22 +1697,18 @@ function ResizeHandle({ onResize }) {
   );
 }
 function ResponsiveTable({cols,rows,empty="데이터가 없습니다."}){
-  const defaultWidths = (cs) => cs.map(c => {
+  const calcWidths = (cs) => cs.map(c => {
     if(c.minWidth) return c.minWidth;
-    const len = (typeof c.label==="function"?"☑":c.label||"").length;
-    if(len <= 2) return 60;
+    const len = (typeof c.label==="function" ? 2 : (c.label||"").length);
+    if(len <= 2) return 44;
     if(len <= 4) return 80;
     if(len <= 6) return 110;
     if(len <= 9) return 130;
     return 150;
   });
-  const [colWidths, setColWidths] = useState(() => defaultWidths(cols));
-  // cols 길이 변경 시(컬럼 토글) widths 재동기화
+  const [colWidths, setColWidths] = useState(() => calcWidths(cols));
   useEffect(() => {
-    setColWidths(prev => {
-      if(prev.length === cols.length) return prev;
-      return defaultWidths(cols);
-    });
+    setColWidths(prev => prev.length !== cols.length ? calcWidths(cols) : prev);
   }, [cols.length]);
 
   const handleResize = (i, delta) => {
