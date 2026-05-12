@@ -872,42 +872,7 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
   const pagedRows   = pageSize===0?filtered:filtered.slice((currentPage-1)*pageSize,currentPage*pageSize);
   useEffect(()=>setCurrentPage(1),[search,filterClinic,filterStatus,filterCat,pageSize]);
 
-  const deleteSelected = async () => {
-    if(selectedIds.size===0) return alert("삭제할 항목을 선택하세요.");
-    if(!window.confirm(`선택한 ${selectedIds.size}건을 휴지통으로 이동하시겠습니까?`)) return;
-    const items=data.filter(s=>selectedIds.has(s.id));
-    for(const item of items){
-      try{
-        await api.deleteSW(item.id);
-        await api.addTrash({item_data:item,table_name:"software",deletedat:nowISO()});
-        addHistory("소프트웨어 삭제","software",item.id,item.name,"선택삭제-휴지통",JSON.stringify(item),"");
-      }catch(e){console.error(e);}
-    }
-    setSelectedIds(new Set());
-    const fresh=await api.getSW();
-    setSw(Array.isArray(fresh)?fresh:[]);
-    const newTrash=await api.getTrash();
-    setTrash(Array.isArray(newTrash)?newTrash:[]);
-  };
 
-  const totalPages  = pageSize===0?1:Math.ceil(filtered.length/pageSize);
-  const pagedRows   = pageSize===0?filtered:filtered.slice((currentPage-1)*pageSize,currentPage*pageSize);
-
-  const deleteSelected = async () => {
-    if(selectedIds.size===0) return alert("삭제할 항목을 선택하세요.");
-    if(!window.confirm(`선택한 ${selectedIds.size}건을 휴지통으로 이동하시겠습니까?`)) return;
-    const items=data.filter(s=>selectedIds.has(s.id));
-    for(const item of items){
-      try{
-        await api.deleteSW(item.id);
-        await api.addTrash({item_data:item,table_name:"software",deletedat:nowISO()});
-        addHistory("소프트웨어 삭제","software",item.id,item.name,"선택삭제-휴지통",JSON.stringify(item),"");
-      }catch(e){console.error(e);}
-    }
-    setSelectedIds(new Set());
-    const fresh=await api.getSW(); setSw(Array.isArray(fresh)?fresh:[]);
-    const nt=await api.getTrash(); setTrash(Array.isArray(nt)?nt:[]);
-  };
 
   const save = () => {
     if(!form.name) return alert("소프트웨어명을 입력하세요.");
