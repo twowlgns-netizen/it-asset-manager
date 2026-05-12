@@ -287,7 +287,7 @@ function DashboardSection({ hw, sw, history, isMobile }) {
           { label:"소프트웨어",  value:sw.length,               color:"#7c3aed", badge:null },
           { label:"활동 로그",   value:history.length,          color:"#0891b2", badge:null },
         ].map(c => (
-          <div key={typeof c.label==="function"?"__fn__":c.label} style={{ background:"#fff", padding:"14px 16px", borderRadius:16, border:"1px solid #e2e8f0", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <div key={c.label} style={{ background:"#fff", padding:"14px 16px", borderRadius:16, border:"1px solid #e2e8f0", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
             <div>
               <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>{c.label}</div>
               <div style={{ fontSize:24, fontWeight:800, color:c.color }}>{c.value}</div>
@@ -374,8 +374,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
   // 필터 바뀌면 1페이지로
   useEffect(() => setCurrentPage(1), [searchText, filterStatus, filterType, filterClinic, pageSize]);
 
-  // 선택 삭제
-  useEffect(()=>setCurrentPage(1),[search,filterClinic,filterStatus,filterCat,pageSize]);
+  // 선택 초기화 (필터 변경 시)
 
   const deleteSelected = async () => {
     if (selectedIds.size === 0) return alert("삭제할 항목을 선택하세요.");
@@ -1697,19 +1696,15 @@ function ResizeHandle({ onResize }) {
   );
 }
 function ResponsiveTable({cols,rows,empty="데이터가 없습니다."}){
-  const calcWidths = (cs) => cs.map(c => {
+  const [colWidths, setColWidths] = useState(() => cols.map(c => {
     if(c.minWidth) return c.minWidth;
-    const len = (typeof c.label==="function" ? 2 : (c.label||"").length);
-    if(len <= 2) return 44;
+    const len = (c.label||"").length;
+    if(len <= 2) return 60;
     if(len <= 4) return 80;
     if(len <= 6) return 110;
     if(len <= 9) return 130;
     return 150;
-  });
-  const [colWidths, setColWidths] = useState(() => calcWidths(cols));
-  useEffect(() => {
-    setColWidths(prev => prev.length !== cols.length ? calcWidths(cols) : prev);
-  }, [cols.length]);
+  }));
 
   const handleResize = (i, delta) => {
     setColWidths(prev => {
@@ -1788,7 +1783,7 @@ function ResponsiveTable({cols,rows,empty="데이터가 없습니다."}){
                 <th key={i} style={{padding:"12px 12px",textAlign:"left",fontSize:11,color:"#94a3b8",
                   borderBottom:"1px solid #f0f0f0",whiteSpace:"nowrap",fontWeight:600,
                   position:"relative",userSelect:"none",overflow:"hidden"}}>
-                  <span style={{display:"block",overflow:"hidden",textOverflow:"ellipsis",paddingRight:8}}>{typeof c.label==="function"?c.label():c.label}</span>
+                  <span style={{display:"block",overflow:"hidden",textOverflow:"ellipsis",paddingRight:8}}>{c.label}</span>
                   <ResizeHandle onResize={delta=>handleResize(i,delta)}/>
                 </th>
               ))}
