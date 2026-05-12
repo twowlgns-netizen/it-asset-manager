@@ -143,20 +143,8 @@ export default function App() {
   const [history, setHistory] = useState([]);
   const [trash,   setTrash]   = useState([]);
 
-  const handleLogin  = (user) => {
-    setIsLoggedIn(true); setCurrentUser(user);
-    localStorage.setItem("isLoggedIn","true"); localStorage.setItem("currentUser",JSON.stringify(user));
-    // 로그인 로그 (currentUser가 세팅되기 전이라 직접 api 호출)
-    api.addHistory({ ts: nowISO(), action:"로그인", aType:"user", aId:user.id||"", aName:user.name, detail:`아이디: ${user.loginid} / 권한: ${user.role}`, before:"", after:"", userName:user.name, userRole:user.role, clinic:user.clinic||"" }).catch(console.error);
-  };
-  const handleLogout = () => {
-    // 로그아웃 로그 (state 초기화 전에 기록)
-    if(currentUser) {
-      api.addHistory({ ts: nowISO(), action:"로그아웃", aType:"user", aId:currentUser.id||"", aName:currentUser.name, detail:`아이디: ${currentUser.loginid}`, before:"", after:"", userName:currentUser.name, userRole:currentUser.role, clinic:currentUser.clinic||"" }).catch(console.error);
-    }
-    setIsLoggedIn(false); setCurrentUser(null);
-    localStorage.removeItem("isLoggedIn"); localStorage.removeItem("currentUser");
-  };
+  const handleLogin  = (user) => { setIsLoggedIn(true); setCurrentUser(user); localStorage.setItem("isLoggedIn","true"); localStorage.setItem("currentUser",JSON.stringify(user)); };
+  const handleLogout = ()     => { setIsLoggedIn(false); setCurrentUser(null); localStorage.removeItem("isLoggedIn"); localStorage.removeItem("currentUser"); };
 
   const fetchAll = useCallback(() => {
     api.getHW().then(d=>setHw(Array.isArray(d)?d:[])).catch(console.error);
@@ -968,13 +956,7 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
       const res=await fetch(`${BASE_URL}/software`,{method:"POST",headers:{...H,"Prefer":"return=representation"},body:JSON.stringify(items)});
       if(!res.ok)throw new Error(await res.text());
       await api.getSW().then(list=>setSw(Array.isArray(list)?list:[]));
-      const swSummary = `파일명: ${file.name} / ${items.length}건 / 이름: ${items.map(it=>it.name||"-").slice(0,10).join(", ")}${items.length>10?"...":""}`;
-      addHistory("파일 가져오기","software","",`${items.length}건`,swSummary,"",JSON.stringify(items.map(it=>({name:it.name,vendor:it.vendor,status:it.status,category:it.category,clinic:it.clinic,assignedto:it.assignedto}))));
-      items.forEach((it,idx)=>{
-        const swName=it.name||`항목${idx+1}`;
-        const swDetail=`파일가져오기 (${file.name}) / 벤더:${it.vendor||"-"} / 담당:${it.assignedto||"-"} / 상태:${it.status||"-"} / 지점:${it.clinic||"-"}`;
-        addHistory("소프트웨어 등록(가져오기)","software","",swName,swDetail,"",JSON.stringify(it));
-      });
+      addHistory("파일 가져오기","software","",`${items.length}건`,file.name);
       alert(`${items.length}건 완료!`);
     } catch(err){alert("가져오기 실패: "+err.message);}
     finally{setImportLoading(false);e.target.value="";}
@@ -1058,6 +1040,7 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
               </div>
             )}
           </div>
+          {canEdit && selectedIds.size>0 && <Btn onClick={deleteSelected} variant="danger">🗑️ 선택삭제 ({selectedIds.size})</Btn>}
           {canEdit && selectedIds.size>0 && <Btn onClick={deleteSelected} variant="danger">🗑️ 선택삭제 ({selectedIds.size})</Btn>}
           {canEdit && <Btn onClick={()=>{setForm({status:"active"});setModal("add");}} variant="primary">+ 등록</Btn>}
         </div>
@@ -1169,11 +1152,11 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
       </div>
       <ResponsiveTable
         cols={[
-          { label:"아이디",  key:"loginid" },
-          { label:"이름",    key:"name"    },
-          { label:"부서",    key:"dept"    },
-          { label:"지점",    render:u=>CLINICS[u.clinic]||u.clinic||"-" },
-          { label:"권한",    render:u=>{ const r={admin:{bg:"#e8f5e9",c:"#0f6e56"},user:{bg:"#eff6ff",c:"#2563eb"},readonly:{bg:"#f1f5f9",c:"#64748b"}}[u.role]||{bg:"#f1f5f9",c:"#64748b"}; return <span style={{background:r.bg,color:r.c,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700}}>{ROLES[u.role]||u.role}</span>; }},
+          { label:"아이디",  key:"loginid", minWidth:130 },
+          { label:"이름",    key:"name",    minWidth:110 },
+          { label:"부서",    key:"dept",    minWidth:130 },
+          { label:"지점",    minWidth:140,  render:u=>CLINICS[u.clinic]||u.clinic||"-" },
+          { label:"권한",    minWidth:120,  render:u=>{ const r={admin:{bg:"#e8f5e9",c:"#0f6e56"},user:{bg:"#eff6ff",c:"#2563eb"},readonly:{bg:"#f1f5f9",c:"#64748b"}}[u.role]||{bg:"#f1f5f9",c:"#64748b"}; return <span style={{background:r.bg,color:r.c,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700}}>{ROLES[u.role]||u.role}</span>; }},
         ]}
         rows={users} empty="사용자가 없습니다."
       />
@@ -1188,12 +1171,7 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
     const req=isAdd?api.addUser(form):api.updateUser(form.id,form);
     req.then(()=>api.getUsers()).then(list=>{
       setUsers(Array.isArray(list)&&list.length?list:INIT_USERS);
-      const userBefore = isAdd ? "" : JSON.stringify(users.find(u=>u.id===form.id)||{});
-      const userAfter  = JSON.stringify({loginid:form.loginid,name:form.name,dept:form.dept,clinic:form.clinic,role:form.role});
-      addHistory(isAdd?"사용자 등록":"사용자 수정","user",form.id||"",form.name,
-        isAdd?`신규 등록 / 아이디:${form.loginid} / 권한:${form.role} / 지점:${form.clinic||"-"}`
-             :`정보 수정 / 아이디:${form.loginid} / 권한:${form.role} / 지점:${form.clinic||"-"}`,
-        userBefore, userAfter);
+      addHistory(isAdd?"사용자 등록":"사용자 수정","user",form.id||"",form.name,isAdd?"신규 등록":"정보 수정");
       setModal(null);
     }).catch(err=>alert("오류: "+err.message)).finally(()=>setLoading(false));
   };
@@ -1203,7 +1181,7 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
     if(!window.confirm(`"${user.name}" 계정을 삭제하시겠습니까?`)) return;
     api.deleteUser(user.id).then(()=>api.getUsers()).then(list=>{
       setUsers(Array.isArray(list)&&list.length?list:INIT_USERS);
-      addHistory("사용자 삭제","user",user.id,user.name,`계정 삭제 / 아이디:${user.loginid} / 권한:${user.role} / 지점:${user.clinic||"-"}`,JSON.stringify(user),"");
+      addHistory("사용자 삭제","user",user.id,user.name,"계정 삭제");
     }).catch(err=>alert("삭제 오류: "+err.message));
   };
 
@@ -1216,13 +1194,13 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
       </div>
       <ResponsiveTable
         cols={[
-          { label:"아이디",   key:"loginid" },
-          { label:"이름",     key:"name"    },
-          { label:"부서",     key:"dept"    },
-          { label:"지점",     render:u=>CLINICS[u.clinic]||u.clinic||"-" },
-          { label:"권한",     render:u=>{ const r={admin:{bg:"#e8f5e9",c:"#0f6e56"},user:{bg:"#eff6ff",c:"#2563eb"},readonly:{bg:"#f1f5f9",c:"#64748b"}}[u.role]||{bg:"#f1f5f9",c:"#64748b"}; return <span style={{background:r.bg,color:r.c,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700}}>{ROLES[u.role]||u.role}</span>; }},
-          { label:"관리",     render:u=>isAdmin&&(
-            <div style={{display:"flex",gap:5}}>
+          { label:"아이디",   key:"loginid", minWidth:130 },
+          { label:"이름",     key:"name",    minWidth:110 },
+          { label:"부서",     key:"dept",    minWidth:130 },
+          { label:"지점",     minWidth:140,  render:u=>CLINICS[u.clinic]||u.clinic||"-" },
+          { label:"권한",     minWidth:120,  render:u=>{ const r={admin:{bg:"#e8f5e9",c:"#0f6e56"},user:{bg:"#eff6ff",c:"#2563eb"},readonly:{bg:"#f1f5f9",c:"#64748b"}}[u.role]||{bg:"#f1f5f9",c:"#64748b"}; return <span style={{background:r.bg,color:r.c,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700}}>{ROLES[u.role]||u.role}</span>; }},
+          { label:"관리",     minWidth:150,  noClip:true, render:u=>isAdmin&&(
+            <div style={{display:"flex",gap:5,flexWrap:"nowrap"}}>
               <Btn onClick={()=>{setForm({...u});setModal("edit");}} style={{fontSize:11,padding:"5px 8px"}}>수정</Btn>
               <Btn onClick={()=>deleteUser(u)} variant="danger"     style={{fontSize:11,padding:"5px 8px"}}>삭제</Btn>
             </div>
@@ -1282,7 +1260,6 @@ const CATEGORY_BADGE = {
   trash:    { bg:"#fff1f0", color:"#cf1322" },
 };
 
-// ⚠️ 로그는 절대 삭제하지 않습니다. api에 deleteHistory 메서드 없음.
 function HistorySection({ history }) {
   const [query,      setQuery]      = useState("");
   const [field,      setField]      = useState("all");
@@ -1361,19 +1338,19 @@ function HistorySection({ history }) {
 
       <ResponsiveTable
         cols={[
-          { label:"시간",    render:h=><span style={{fontSize:11,whiteSpace:"nowrap",color:"#64748b"}}>{fDT(h.ts)}</span> },
-          { label:"수행자",  key:"userName" },
-          { label:"카테고리",render:h=>{
+          { label:"시간",    minWidth:155, render:h=><span style={{fontSize:11,whiteSpace:"nowrap",color:"#64748b"}}>{fDT(h.ts)}</span> },
+          { label:"수행자",  minWidth:100, key:"userName" },
+          { label:"카테고리",minWidth:130, render:h=>{
             const b=CATEGORY_BADGE[h.aType]||{bg:"#f1f5f9",color:"#64748b"};
             return <span style={{background:b.bg,color:b.color,padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
               {HISTORY_CATEGORIES[h.aType]||h.aType||"-"}
             </span>;
           }},
-          { label:"액션",    render:h=><span style={{background:"#f1f5f9",padding:"2px 8px",borderRadius:10,fontSize:12}}>{h.action}</span> },
-          { label:"대상",    key:"aName" },
-          { label:"상세",    key:"detail" },
-          { label:"지점",    render:h=>CLINICS[h.clinic]||h.clinic||"-" },
-          { label:"변경내용",render:h=>(h.before||h.after)&&(
+          { label:"액션",    minWidth:170, render:h=><span style={{background:"#f1f5f9",padding:"2px 8px",borderRadius:10,fontSize:12}}>{h.action}</span> },
+          { label:"대상",    minWidth:130, key:"aName" },
+          { label:"상세",    minWidth:240, key:"detail" },
+          { label:"지점",    minWidth:120, render:h=>CLINICS[h.clinic]||h.clinic||"-" },
+          { label:"변경내용",minWidth:90,  noClip:true, render:h=>(h.before||h.after)&&(
             <Btn onClick={()=>setShowDetail(h)} style={{fontSize:11,padding:"4px 8px"}}>보기</Btn>
           )},
         ]}
@@ -1631,13 +1608,13 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit }) {
       <h2 style={{marginBottom:16}}>휴지통 ({trash.length}건)</h2>
       <ResponsiveTable
         cols={[
-          { label:"구분",   render:t=>{ const tb=getTable(t); return <span style={{background:tb==="assets"?"#eff6ff":"#f0fdf4",color:tb==="assets"?"#2563eb":"#0f6e56",padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700}}>{tb==="assets"?"장비":"소프트웨어"}</span>; }},
-          { label:"이름",   render:t=>{ const d=getData(t); return d.gccode||d.modelname||d.name||"-"; }},
-          { label:"팀/담당",render:t=>{ const d=getData(t); return d.team||d.assignedto||"-"; }},
-          { label:"지점",   render:t=>{ const d=getData(t); return CLINICS[d.clinic]||d.clinic||"-"; }},
-          { label:"삭제일", render:t=>fDT(t.deletedat||t.deletedAt) },
-          { label:"관리",   render:t=>canEdit&&(
-            <div style={{display:"flex",gap:5}}>
+          { label:"구분",   minWidth:110, render:t=>{ const tb=getTable(t); return <span style={{background:tb==="assets"?"#eff6ff":"#f0fdf4",color:tb==="assets"?"#2563eb":"#0f6e56",padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700}}>{tb==="assets"?"장비":"소프트웨어"}</span>; }},
+          { label:"이름",   minWidth:170, render:t=>{ const d=getData(t); return d.gccode||d.modelname||d.name||"-"; }},
+          { label:"팀/담당",minWidth:130, render:t=>{ const d=getData(t); return d.team||d.assignedto||"-"; }},
+          { label:"지점",   minWidth:130, render:t=>{ const d=getData(t); return CLINICS[d.clinic]||d.clinic||"-"; }},
+          { label:"삭제일", minWidth:155, render:t=>fDT(t.deletedat||t.deletedAt) },
+          { label:"관리",   minWidth:170, noClip:true, render:t=>canEdit&&(
+            <div style={{display:"flex",gap:5,flexWrap:"nowrap"}}>
               <Btn onClick={()=>restore(t)} variant="warning" style={{fontSize:11,padding:"5px 8px"}}>복구</Btn>
               <Btn onClick={()=>deleteForever(t)} variant="danger" style={{fontSize:11,padding:"5px 8px"}}>영구삭제</Btn>
             </div>
@@ -1719,15 +1696,16 @@ function ResizeHandle({ onResize }) {
   );
 }
 function ResponsiveTable({cols,rows,empty="데이터가 없습니다."}){
-  const [colWidths, setColWidths] = useState(() => cols.map(c => {
+  const calcW = (c) => {
     if(c.minWidth) return c.minWidth;
-    const len = (c.label||"").length;
-    if(len <= 2) return 60;
-    if(len <= 4) return 80;
-    if(len <= 6) return 110;
-    if(len <= 9) return 130;
-    return 150;
-  }));
+    const lbl = typeof c.label==="function" ? "□" : (c.label||"");
+    // 한국어 기준: 글자당 16px + 좌우 패딩 32px
+    return Math.max(80, lbl.length * 16 + 32);
+  };
+  const [colWidths, setColWidths] = useState(() => cols.map(calcW));
+  useEffect(() => {
+    setColWidths(prev => prev.length !== cols.length ? cols.map(calcW) : prev);
+  }, [cols.length]);
 
   const handleResize = (i, delta) => {
     setColWidths(prev => {
