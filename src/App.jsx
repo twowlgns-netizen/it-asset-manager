@@ -401,27 +401,6 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
     triggerDownload(new Blob([csv],{type:"text/csv;charset=utf-8"}), "장비가져오기_양식.csv");
   };
 
-  // 📋 가져오기 양식 다운로드
-  const downloadTemplate = () => {
-    const header = HW_FIELDS.map(f => f.label).join(",");
-    const example = HW_FIELDS.map(f => {
-      const ex = {
-        "번호":"1","자산상태":"사용중","지점":"강남의원","실사날짜":"2025-01-15",
-        "GC자산코드":"GCI-NT-001","아이메드 자산코드":"GCSF-PC-001",
-        "제조번호":"SN123456","IP":"192.168.1.100","팀(부서명)":"HIS개발팀",
-        "사용자":"홍길동","PC 이름":"O034052","모델명":"NT901X5J",
-        "자산구분":"노트북","비고(이력관리)":"정상사용중","MAC Address":"AA:BB:CC:DD:EE:FF",
-        "자산 수령일":"2023-01-01","구입일자":"2023-01-01","제조사":"삼성",
-        "CPU":"i5-7200U","Memory":"8GB","하드디스크":"SSD 256GB",
-        "목적/기능":"업무용","법인":"GC케어","위치(건물)":"여의도파크원",
-        "구매정보(전자결재)":"전자결재001","모니터 수량":"1","유료 라이선스":"Windows11"
-      };
-      return `"${(ex[f.label]||"").replace(/"/g,'""')}"`;
-    }).join(",");
-    const csv = "\uFEFF" + [header, example].join("\n");
-    triggerDownload(new Blob([csv],{type:"text/csv;charset=utf-8"}), "장비가져오기_양식.csv");
-  };
-
   const exportCSV = () => {
     const header = HW_FIELDS.map(f=>f.label).join(",");
     const rows = data.map(item=>HW_FIELDS.map(f=>`"${String(item[f.key]??"").replace(/"/g,'""')}"`).join(","));
