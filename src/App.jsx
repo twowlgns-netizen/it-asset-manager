@@ -453,8 +453,18 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
       if(!window.confirm(`${items.length}건을 가져오시겠습니까?\n\n⚠️ 한 번에 최대 1000건까지 등록 가능합니다.`)) return;
       const res=await fetch(`${BASE_URL}/assets`,{method:"POST",headers:{...H,"Prefer":"return=representation"},body:JSON.stringify(items)});
       if(!res.ok){throw new Error(await res.text());}
+      const inserted = await res.clone().json().catch(()=>items);
       await api.getHW().then(list=>setHw(Array.isArray(list)?list:[]));
-      addHistory("파일 가져오기","hardware","",`${items.length}건`,file.name);
+      // 파일 전체 요약 로그
+      const gcCodes = items.map(it=>it.gccode||it.modelname||it.imedcode||"-").join(", ");
+      const summary = `파일명: ${file.name} / ${items.length}건 / GC코드: ${gcCodes.length>200?gcCodes.slice(0,200)+"...":gcCodes}`;
+      addHistory("파일 가져오기","hardware","",`${items.length}건`,summary,"",JSON.stringify(items.map(it=>({num:it.num,gccode:it.gccode,imedcode:it.imedcode,modelname:it.modelname,assetstatus:it.assetstatus,clinic:it.clinic,team:it.team,username:it.username}))));
+      // 항목별 개별 로그
+      items.forEach((it,idx)=>{
+        const name=it.gccode||it.modelname||it.imedcode||`항목${idx+1}`;
+        const detail=`파일가져오기 (${file.name}) / 지점:${it.clinic||"-"} / 팀:${it.team||"-"} / 사용자:${it.username||"-"} / 상태:${it.assetstatus||"-"}`;
+        addHistory("장비 등록(가져오기)","hardware","",name,detail,"",JSON.stringify(it));
+      });
       alert(`${items.length}건 완료!`);
     } catch(err){ alert("가져오기 실패: "+err.message); }
     finally{ setImportLoading(false); e.target.value=""; }
@@ -490,8 +500,8 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
   };
 
   const activeCols = ALL_HW_COLS.filter(c=>visibleCols.has(c.key)).map(c=>({ label:c.label, render:COL_RENDERERS[c.key]||(h=>h[c.key]||"-") }));
-  if (canEdit) activeCols.push({ label:"관리", render: h=>(
-    <div style={{display:"flex",gap:4}}>
+  if (canEdit) activeCols.push({ label:"관리", minWidth:190, noClip:true, render: h=>(
+    <div style={{display:"flex",gap:4,flexWrap:"nowrap"}}>
       <Btn onClick={()=>{setDetailItem(h);setModal("detail");}} style={{fontSize:11,padding:"5px 7px"}}>상세</Btn>
       <Btn onClick={()=>{setQrItem(h);setModal("qr");}}         style={{fontSize:11,padding:"5px 7px"}}>QR</Btn>
       <Btn onClick={()=>{setForm({...h});setModal("edit");}}    style={{fontSize:11,padding:"5px 7px"}}>수정</Btn>
@@ -564,7 +574,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
 
       {(modal==="add"||modal==="edit") && (
         <Modal title={modal==="add"?"새 자산 등록":"자산 정보 수정"} onClose={()=>setModal(null)}>
-          <HWForm form={form} setForm={setForm} onSave={save} loading={loading} />
+          <HWForm form={form} setForm={setForm} onSave={save} loading={loading} isEdit={modal==="edit"} />
         </Modal>
       )}
       {modal==="detail" && detailItem && (
@@ -589,7 +599,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
 }
 
 // ── 하드웨어 폼
-function HWForm({ form, setForm, onSave, loading }) {
+function HWForm({ form, setForm, onSave, loading, isEdit }) {
   const inp = { padding:"8px 10px", borderRadius:8, border:"1px solid #ddd", fontSize:13, width:"100%", boxSizing:"border-box" };
   return (
     <div style={{maxHeight:"62vh",overflowY:"auto",paddingRight:4}}>
@@ -599,6 +609,15 @@ function HWForm({ form, setForm, onSave, loading }) {
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
             {sec.keys.map(key=>{
               const f=HW_FIELD_MAP[key]; if(!f) return null;
+              // 번호(num)는 신규 등록 시 자동 부여되므로 숨김
+              if(key==="num" && !isEdit) return null;
+              // 번호(num) 수정 시엔 읽기전용으로 표시
+              if(key==="num" && isEdit) return (
+                <label key={key} style={{display:"flex",flexDirection:"column",gap:3}}>
+                  <span style={{fontSize:11,color:"#64748b"}}>{f.label} <span style={{color:"#94a3b8"}}>(자동)</span></span>
+                  <input type="number" value={form[key]||""} readOnly style={{...inp,background:"#f8fafc",color:"#94a3b8",cursor:"not-allowed"}}/>
+                </label>
+              );
               if(f.type==="select") return (
                 <label key={key} style={{display:"flex",flexDirection:"column",gap:3}}>
                   <span style={{fontSize:11,color:"#64748b"}}>{f.label}</span>
@@ -1495,8 +1514,39 @@ function Modal({title,onClose,children}){
     </div>
   );
 }
+function ResizeHandle({ onResize }) {
+  const startRef = useRef(null);
+  const handleMouseDown = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    startRef.current = { x: e.clientX };
+    const onMove = (mv) => {
+      if (!startRef.current) return;
+      const delta = mv.clientX - startRef.current.x;
+      startRef.current.x = mv.clientX;
+      onResize(delta);
+    };
+    const onUp = () => {
+      startRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+  return (
+    <div
+      onMouseDown={handleMouseDown}
+      style={{position:"absolute",right:0,top:0,bottom:0,width:6,cursor:"col-resize",zIndex:10,
+        background:"transparent",borderRight:"2px solid transparent",transition:"border-color 0.15s"}}
+      onMouseEnter={e=>e.currentTarget.style.borderRightColor="#0f6e56"}
+      onMouseLeave={e=>e.currentTarget.style.borderRightColor="transparent"}
+    />
+  );
+}
 function ResponsiveTable({cols,rows,empty="데이터가 없습니다."}){
   const [colWidths, setColWidths] = useState(() => cols.map(c => {
+    if(c.minWidth) return c.minWidth;
     const len = (c.label||"").length;
     if(len <= 2) return 60;
     if(len <= 4) return 80;
@@ -1504,44 +1554,29 @@ function ResponsiveTable({cols,rows,empty="데이터가 없습니다."}){
     if(len <= 9) return 130;
     return 150;
   }));
-  const resizing = useRef(null);
 
-  const startResize = (e, i) => {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startW = colWidths[i];
-    resizing.current = { i, startX, startW };
-    const onMove = (mv) => {
-      const delta = mv.clientX - resizing.current.startX;
-      setColWidths(prev => {
-        const next = [...prev];
-        next[resizing.current.i] = Math.max(50, resizing.current.startW + delta);
-        return next;
-      });
-    };
-    const onUp = () => {
-      resizing.current = null;
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+  const handleResize = (i, delta) => {
+    setColWidths(prev => {
+      const next = [...prev];
+      next[i] = Math.max(50, next[i] + delta);
+      return next;
+    });
   };
 
   return (
-    <div style={{background:"#fff",borderRadius:14,border:"1px solid #eee",overflowX:"auto",overflowY:"visible"}}>
+    <div style={{background:"#fff",borderRadius:14,border:"1px solid #eee",overflowX:"auto"}}>
       <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:colWidths.reduce((a,b)=>a+b,0)}}>
+        <colgroup>
+          {colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}
+        </colgroup>
         <thead>
           <tr style={{background:"#f8fafc"}}>
             {cols.map((c,i)=>(
-              <th key={i} style={{width:colWidths[i],minWidth:colWidths[i],maxWidth:colWidths[i],padding:"12px 12px",textAlign:"left",fontSize:11,color:"#94a3b8",borderBottom:"1px solid #f0f0f0",whiteSpace:"nowrap",fontWeight:600,position:"relative",userSelect:"none"}}>
-                <span style={{display:"block",overflow:"hidden",textOverflow:"ellipsis"}}>{c.label}</span>
-                <div
-                  onMouseDown={e=>startResize(e,i)}
-                  style={{position:"absolute",right:0,top:0,bottom:0,width:5,cursor:"col-resize",zIndex:10,background:"transparent"}}
-                  onMouseEnter={e=>e.currentTarget.style.background="rgba(15,110,86,0.3)"}
-                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}
-                />
+              <th key={i} style={{padding:"12px 12px",textAlign:"left",fontSize:11,color:"#94a3b8",
+                borderBottom:"1px solid #f0f0f0",whiteSpace:"nowrap",fontWeight:600,
+                position:"relative",userSelect:"none",overflow:"hidden"}}>
+                <span style={{display:"block",overflow:"hidden",textOverflow:"ellipsis",paddingRight:8}}>{c.label}</span>
+                <ResizeHandle onResize={delta=>handleResize(i,delta)}/>
               </th>
             ))}
           </tr>
@@ -1552,7 +1587,10 @@ function ResponsiveTable({cols,rows,empty="데이터가 없습니다."}){
             :rows.map((row,ri)=>(
               <tr key={ri} style={{borderBottom:"1px solid #f8fafc"}} onMouseEnter={e=>e.currentTarget.style.background="#fafafa"} onMouseLeave={e=>e.currentTarget.style.background=""}>
                 {cols.map((c,ci)=>(
-                  <td key={ci} style={{width:colWidths[ci],minWidth:colWidths[ci],maxWidth:colWidths[ci],padding:"11px 12px",fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  <td key={ci} style={{padding:"11px 12px",fontSize:13,
+                    overflow: c.noClip ? "visible" : "hidden",
+                    textOverflow: c.noClip ? "unset" : "ellipsis",
+                    whiteSpace: c.noClip ? "normal" : "nowrap"}}>
                     {c.render?c.render(row):row[c.key]}
                   </td>
                 ))}
