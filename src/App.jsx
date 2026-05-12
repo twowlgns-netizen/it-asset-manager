@@ -434,9 +434,14 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
       }
       const existingMaxNum = Math.max(0, ...data.map(h => parseInt(h.num) || 0));
       const items=rawRows.filter(r=>Object.values(r).some(v=>v!=="")).map((row,idx)=>{
-        const item={assetstatus:"active",assettype:"laptop"};
-        HW_FIELDS.forEach(f=>{const val=row[f.label]!==undefined?row[f.label]:(row[f.key]!==undefined?row[f.key]:"");if(val!=="")item[f.key]=val;});
-        if(!item.num) item.num = existingMaxNum + idx + 1;
+        const item={};
+        HW_FIELDS.forEach(f=>{
+          const val=row[f.label]!==undefined?row[f.label]:(row[f.key]!==undefined?row[f.key]:"");
+          item[f.key] = val!=="" ? val : null;
+        });
+        if(!item.assetstatus) item.assetstatus = "active";
+        if(!item.assettype)   item.assettype   = "laptop";
+        item.num = existingMaxNum + idx + 1;
         return item;
       });
       if(!items.length){alert("데이터 없음");return;}
