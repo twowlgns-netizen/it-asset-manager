@@ -190,7 +190,7 @@ export default function App() {
         </div>
       )}
 
-      <div style={{ flex:1, overflowY:"auto" }}>
+      <div style={{ flex:1, overflowY:"auto", overflowX:"auto", minWidth:0 }}>
         {isMobile && (
           <div style={{ background:"#fff", padding:"14px 18px", borderBottom:"1px solid #e2e8f0", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, zIndex:10 }}>
             <span style={{ fontWeight:800, color:"#0f6e56", fontSize:16 }}>IT Asset Manager</span>
@@ -1496,12 +1496,54 @@ function Modal({title,onClose,children}){
   );
 }
 function ResponsiveTable({cols,rows,empty="데이터가 없습니다."}){
+  const [colWidths, setColWidths] = useState(() => cols.map(c => {
+    const len = (c.label||"").length;
+    if(len <= 2) return 60;
+    if(len <= 4) return 80;
+    if(len <= 6) return 110;
+    if(len <= 9) return 130;
+    return 150;
+  }));
+  const resizing = useRef(null);
+
+  const startResize = (e, i) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = colWidths[i];
+    resizing.current = { i, startX, startW };
+    const onMove = (mv) => {
+      const delta = mv.clientX - resizing.current.startX;
+      setColWidths(prev => {
+        const next = [...prev];
+        next[resizing.current.i] = Math.max(50, resizing.current.startW + delta);
+        return next;
+      });
+    };
+    const onUp = () => {
+      resizing.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
   return (
-    <div style={{background:"#fff",borderRadius:14,border:"1px solid #eee",overflowX:"auto"}}>
-      <table style={{width:"100%",borderCollapse:"collapse",minWidth:500}}>
+    <div style={{background:"#fff",borderRadius:14,border:"1px solid #eee",overflowX:"auto",overflowY:"visible"}}>
+      <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:colWidths.reduce((a,b)=>a+b,0)}}>
         <thead>
           <tr style={{background:"#f8fafc"}}>
-            {cols.map((c,i)=><th key={i} style={{padding:"12px 12px",textAlign:"left",fontSize:11,color:"#94a3b8",borderBottom:"1px solid #f0f0f0",whiteSpace:"nowrap",fontWeight:600}}>{c.label}</th>)}
+            {cols.map((c,i)=>(
+              <th key={i} style={{width:colWidths[i],minWidth:colWidths[i],maxWidth:colWidths[i],padding:"12px 12px",textAlign:"left",fontSize:11,color:"#94a3b8",borderBottom:"1px solid #f0f0f0",whiteSpace:"nowrap",fontWeight:600,position:"relative",userSelect:"none"}}>
+                <span style={{display:"block",overflow:"hidden",textOverflow:"ellipsis"}}>{c.label}</span>
+                <div
+                  onMouseDown={e=>startResize(e,i)}
+                  style={{position:"absolute",right:0,top:0,bottom:0,width:5,cursor:"col-resize",zIndex:10,background:"transparent"}}
+                  onMouseEnter={e=>e.currentTarget.style.background="rgba(15,110,86,0.3)"}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                />
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -1509,7 +1551,11 @@ function ResponsiveTable({cols,rows,empty="데이터가 없습니다."}){
             ?<tr><td colSpan={cols.length} style={{padding:40,textAlign:"center",color:"#94a3b8"}}>{empty}</td></tr>
             :rows.map((row,ri)=>(
               <tr key={ri} style={{borderBottom:"1px solid #f8fafc"}} onMouseEnter={e=>e.currentTarget.style.background="#fafafa"} onMouseLeave={e=>e.currentTarget.style.background=""}>
-                {cols.map((c,ci)=><td key={ci} style={{padding:"11px 12px",fontSize:13}}>{c.render?c.render(row):row[c.key]}</td>)}
+                {cols.map((c,ci)=>(
+                  <td key={ci} style={{width:colWidths[ci],minWidth:colWidths[ci],maxWidth:colWidths[ci],padding:"11px 12px",fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {c.render?c.render(row):row[c.key]}
+                  </td>
+                ))}
               </tr>
             ))
           }
