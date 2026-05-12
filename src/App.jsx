@@ -393,7 +393,6 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
         "자산 수령일":"2023-01-01","구입일자":"2023-01-01","제조사":"삼성",
         "CPU":"i5-7200U","Memory":"8GB","하드디스크":"SSD 256GB",
         "목적/기능":"업무용","법인":"GC케어","위치(건물)":"여의도파크원",
-        "구매정보(전자결재)":"전자결재001","모니터 수량":"1","유료 라이선스":"Windows11"
       };
       return `"${(ex[f.label]||"").replace(/"/g,'""')}"`;
     }).join(",");
