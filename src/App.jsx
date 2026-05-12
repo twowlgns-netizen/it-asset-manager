@@ -124,8 +124,11 @@ export default function App() {
   useEffect(() => {
     const style = document.createElement("style");
     style.textContent = `
-      /* 테이블 내부 스크롤바 숨김 (커스텀 스크롤바 사용) */
+      html, body { overflow: hidden; height: 100%; margin: 0; padding: 0; }
       .hw-no-sb::-webkit-scrollbar { display: none; }
+      ::-webkit-scrollbar { width: 4px; height: 4px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
     `;
     document.head.appendChild(style);
     return () => document.head.removeChild(style);
@@ -183,7 +186,7 @@ export default function App() {
     <div style={{ display:"flex", flexDirection:isMobile?"column":"row", height:"100vh", background:"#f8fafc", overflow:"hidden" }}>
       {!isMobile && (
         <div style={{ width:220, background:"#fff", borderRight:"1px solid #e2e8f0", padding:"24px 16px", display:"flex", flexDirection:"column" }}>
-          <div style={{ fontSize:16, fontWeight:800, color:"#0f6e56", marginBottom:28 }}>IT Asset Manager</div>
+          <div onClick={()=>{ setView("dashboard"); window.location.reload(); }} style={{ fontSize:16, fontWeight:800, color:"#0f6e56", marginBottom:28, cursor:"pointer", userSelect:"none" }}>IT Asset Manager</div>
           <div style={{ flex:1 }}>
             {menuItems.map(m => (
               <div key={m.id} onClick={()=>setView(m.id)}
@@ -202,11 +205,11 @@ export default function App() {
       <div style={{ flex:1, overflowY:"auto", overflowX:"hidden", minWidth:0 }}>
         {isMobile && (
           <div style={{ background:"#fff", padding:"14px 18px", borderBottom:"1px solid #e2e8f0", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, zIndex:10 }}>
-            <span style={{ fontWeight:800, color:"#0f6e56", fontSize:16 }}>IT Asset Manager</span>
+            <span onClick={()=>{ setView("dashboard"); window.location.reload(); }} style={{ fontWeight:800, color:"#0f6e56", fontSize:16, cursor:"pointer", userSelect:"none" }}>IT Asset Manager</span>
             <Btn onClick={handleLogout} style={{ fontSize:11, padding:"5px 10px" }}>로그아웃</Btn>
           </div>
         )}
-        <main style={{ padding:isMobile?"16px":"32px", paddingBottom:100 }}>
+        <main style={{ padding:isMobile?"16px":"32px", paddingBottom:40 }}>
           {view==="dashboard"  && <DashboardSection  hw={hw} sw={sw} history={history} isMobile={isMobile} />}
           {view==="hardware"   && <HardwareSection   data={hw} setHw={setHw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} />}
           {view==="software"   && <SoftwareSection   data={sw} setSw={setSw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} />}
@@ -239,10 +242,12 @@ function DashboardSection({ hw, sw, history, isMobile }) {
   const filtered = clinicFilter === "all" ? hw : hw.filter(h => h.clinic === clinicFilter);
 
   const hwStats = {
-    total:   filtered.length,
-    active:  filtered.filter(h=>h.assetstatus==="active").length,
-    disposed:filtered.filter(h=>["disposed","dispose_target"].includes(h.assetstatus)).length,
-    repair:  filtered.filter(h=>h.assetstatus==="repair").length,
+    total:          filtered.length,
+    active:         filtered.filter(h=>h.assetstatus==="active").length,
+    inactive:       filtered.filter(h=>h.assetstatus==="inactive").length,
+    repair:         filtered.filter(h=>h.assetstatus==="repair").length,
+    disposed:       filtered.filter(h=>h.assetstatus==="disposed").length,
+    dispose_target: filtered.filter(h=>h.assetstatus==="dispose_target").length,
   };
   const clinicCounts = Object.entries(CLINICS).filter(([k])=>k!=="all").map(([k,v])=>({
     key:k, name:v, count: hw.filter(h=>h.clinic===k).length,
@@ -271,17 +276,25 @@ function DashboardSection({ hw, sw, history, isMobile }) {
       </div>
 
       {/* 상태별 요약 */}
-      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"repeat(5,1fr)", gap:12, marginBottom:24 }}>
+      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":`repeat(${isMobile?2:4},1fr)`, gap:12, marginBottom:16 }}>
         {[
-          { label:"전체 장비",  value:hwStats.total,    color:"#0f6e56" },
-          { label:"사용중",     value:hwStats.active,   color:"#2563eb" },
-          { label:"폐기/대상",  value:hwStats.disposed, color:"#cf1322" },
-          { label:"수리중",     value:hwStats.repair,   color:"#d97706" },
-          { label:"소프트웨어", value:sw.length,         color:"#7c3aed" },
+          { label:"전체 장비",   value:hwStats.total,          color:"#0f6e56", badge:null },
+          { label:"사용중",      value:hwStats.active,          color:"#2563eb", badge:{bg:"#e8f5e9",c:"#0f6e56"} },
+          { label:"미사용",      value:hwStats.inactive,        color:"#64748b", badge:{bg:"#f1f5f9",c:"#64748b"} },
+          { label:"수리중",      value:hwStats.repair,          color:"#c2410c", badge:{bg:"#fff7ed",c:"#c2410c"} },
+          { label:"폐기",        value:hwStats.disposed,        color:"#cf1322", badge:{bg:"#fff1f0",c:"#cf1322"} },
+          { label:"폐기대상",    value:hwStats.dispose_target,  color:"#d97706", badge:{bg:"#fef3c7",c:"#d97706"} },
+          { label:"소프트웨어",  value:sw.length,               color:"#7c3aed", badge:null },
+          { label:"활동 로그",   value:history.length,          color:"#0891b2", badge:null },
         ].map(c => (
-          <div key={c.label} style={{ background:"#fff", padding:"16px", borderRadius:16, border:"1px solid #e2e8f0" }}>
-            <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>{c.label}</div>
-            <div style={{ fontSize:26, fontWeight:800, color:c.color }}>{c.value}</div>
+          <div key={c.label} style={{ background:"#fff", padding:"14px 16px", borderRadius:16, border:"1px solid #e2e8f0", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+            <div>
+              <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>{c.label}</div>
+              <div style={{ fontSize:24, fontWeight:800, color:c.color }}>{c.value}</div>
+            </div>
+            {c.badge && <span style={{ background:c.badge.bg, color:c.badge.c, padding:"3px 10px", borderRadius:20, fontSize:11, fontWeight:700 }}>
+              {ASSET_STATUS[c.label==="사용중"?"active":c.label==="미사용"?"inactive":c.label==="수리중"?"repair":c.label==="폐기"?"disposed":"dispose_target"]||c.label}
+            </span>}
           </div>
         ))}
       </div>
@@ -314,7 +327,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
   const [form,         setForm]         = useState({});
   const [detailItem,   setDetailItem]   = useState(null);
   const [qrItem,       setQrItem]       = useState(null);
-  const [showQRScan,   setShowQRScan]   = useState(false); // 장비 목록에서 QR 스캔 모달
+  const [showQRScan,   setShowQRScan]   = useState(false);
   const [loading,      setLoading]      = useState(false);
   const [importLoading,setImportLoading]= useState(false);
   const [searchText,   setSearchText]   = useState("");
@@ -322,6 +335,9 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
   const [filterType,   setFilterType]   = useState("");
   const [filterClinic, setFilterClinic] = useState("all");
   const [showColMenu,  setShowColMenu]  = useState(false);
+  const [selectedIds,  setSelectedIds]  = useState(new Set()); // 선택된 항목 ID
+  const [pageSize,     setPageSize]     = useState(20);         // 페이지당 표시 수
+  const [currentPage,  setCurrentPage]  = useState(1);         // 현재 페이지
   const hwColPrefKey = `hw_cols_${currentUser?.loginid||"default"}`;
   const [visibleCols,  setVisibleCols]  = useState(()=>loadColPref(hwColPrefKey, DEFAULT_HW_COLS));
   const fileInputRef = useRef(null);
@@ -350,6 +366,35 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
     const matchClinic = filterClinic==="all" || h.clinic===filterClinic;
     return matchText && matchStatus && matchType && matchClinic;
   });
+
+  // 페이지네이션
+  const totalPages = pageSize === 0 ? 1 : Math.ceil(filtered.length / pageSize);
+  const pagedRows  = pageSize === 0 ? filtered : filtered.slice((currentPage-1)*pageSize, currentPage*pageSize);
+
+  // 필터 바뀌면 1페이지로
+  useEffect(() => setCurrentPage(1), [searchText, filterStatus, filterType, filterClinic, pageSize]);
+
+  // 선택 삭제
+  useEffect(()=>setCurrentPage(1),[search,filterClinic,filterStatus,filterCat,pageSize]);
+
+  const deleteSelected = async () => {
+    if (selectedIds.size === 0) return alert("삭제할 항목을 선택하세요.");
+    if (!window.confirm(`선택한 ${selectedIds.size}건을 휴지통으로 이동하시겠습니까?`)) return;
+    const items = data.filter(h => selectedIds.has(h.id));
+    for (const item of items) {
+      const name = item.gccode||item.modelname||"자산";
+      try {
+        await api.deleteHW(item.id);
+        await api.addTrash({ item_data:item, table_name:"assets", deletedat:nowISO() });
+        addHistory("하드웨어 삭제","hardware",item.id,name,"선택삭제-휴지통",JSON.stringify(item),"");
+      } catch(e) { console.error(e); }
+    }
+    setSelectedIds(new Set());
+    const fresh = await api.getHW();
+    setHw(Array.isArray(fresh)?fresh:[]);
+    const newTrash = await api.getTrash();
+    setTrash(Array.isArray(newTrash)?newTrash:[]);
+  };
 
   const save = () => {
     if (!form.gccode && !form.modelname && !form.imedcode) return alert("GC자산코드 또는 모델명을 입력하세요.");
@@ -508,7 +553,25 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
     purchaseinfo:  h=><span style={{fontSize:12}}>{h.purchaseinfo||"-"}</span>,
   };
 
-  const activeCols = ALL_HW_COLS.filter(c=>visibleCols.has(c.key)).map(c=>({ label:c.label, render:COL_RENDERERS[c.key]||(h=>h[c.key]||"-") }));
+  const allPageIds = pagedRows.map(h=>h.id);
+  const isAllChecked = allPageIds.length>0 && allPageIds.every(id=>selectedIds.has(id));
+  const activeCols = [
+    {
+      label: () => (
+        <input type="checkbox" checked={isAllChecked}
+          onChange={e=>{ const n=new Set(selectedIds); if(e.target.checked){allPageIds.forEach(id=>n.add(id));}else{allPageIds.forEach(id=>n.delete(id));} setSelectedIds(n); }}
+          style={{accentColor:"#0f6e56",width:13,height:13,cursor:"pointer"}} />
+      ),
+      minWidth:36, noClip:true,
+      render: h=>(
+        <input type="checkbox" checked={selectedIds.has(h.id)}
+          onChange={e=>{ const n=new Set(selectedIds); e.target.checked?n.add(h.id):n.delete(h.id); setSelectedIds(n); }}
+          onClick={e=>e.stopPropagation()}
+          style={{accentColor:"#0f6e56",width:13,height:13,cursor:"pointer"}} />
+      )
+    },
+    ...ALL_HW_COLS.filter(c=>visibleCols.has(c.key)).map(c=>({ label:c.label, render:COL_RENDERERS[c.key]||(h=>h[c.key]||"-") }))
+  ];
   if (canEdit) activeCols.push({ label:"관리", minWidth:190, noClip:true, render: h=>(
     <div style={{display:"flex",gap:4,flexWrap:"nowrap"}}>
       <Btn onClick={()=>{setDetailItem(h);setModal("detail");}} style={{fontSize:11,padding:"5px 7px"}}>상세</Btn>
@@ -522,7 +585,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
     <div>
       <div style={{marginBottom:14}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:12}}>
-          <h2 style={{margin:0,fontSize:20}}>하드웨어 <span style={{fontSize:13,color:"#64748b",fontWeight:500}}>전체 {data.length}건{filtered.length!==data.length?` · 필터 ${filtered.length}건`:""}</span></h2>
+          <h2 style={{margin:0,fontSize:20}}>하드웨어 <span style={{fontSize:13,color:"#64748b",fontWeight:500}}>전체 {data.length}건{filtered.length!==data.length?` · 필터 ${filtered.length}건`:""}{selectedIds.size>0?` · 선택 ${selectedIds.size}건`:""}</span></h2>
           <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
             <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleImport} style={{display:"none"}}/>
             <Btn onClick={()=>fileInputRef.current?.click()} disabled={importLoading}>{importLoading?"가져오는 중...":"📂 가져오기"}</Btn>
@@ -553,6 +616,9 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
                 </div>
               )}
             </div>
+            {canEdit && selectedIds.size>0 && (
+              <Btn onClick={deleteSelected} variant="danger">🗑️ 선택삭제 ({selectedIds.size})</Btn>
+            )}
             <Btn onClick={()=>setShowQRScan(true)} style={{background:"#0f6e56",color:"#fff",border:"none"}}>📷 QR 스캔</Btn>
             {canEdit && <Btn onClick={()=>{setForm({assetstatus:"active",assettype:"laptop"});setModal("add");}} variant="primary">+ 등록</Btn>}
           </div>
@@ -579,7 +645,32 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
         </div>
       </div>
 
-      <ResponsiveTable cols={activeCols} rows={filtered} empty="등록된 자산이 없습니다." />
+      {/* 페이지 크기 + 페이지네이션 */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"#64748b"}}>
+          <span>페이지당</span>
+          <select value={pageSize} onChange={e=>{setPageSize(Number(e.target.value));setCurrentPage(1);}}
+            style={{padding:"5px 8px",borderRadius:8,border:"1px solid #ddd",fontSize:13,background:"#fff"}}>
+            {[10,20,30,50,100].map(n=><option key={n} value={n}>{n}개</option>)}
+          </select>
+          <span style={{fontSize:12}}>({(currentPage-1)*pageSize+1}–{Math.min(currentPage*pageSize,filtered.length)} / {filtered.length}건)</span>
+        </div>
+        {totalPages>1 && (
+          <div style={{display:"flex",gap:4,alignItems:"center"}}>
+            <Btn onClick={()=>setCurrentPage(1)}          disabled={currentPage===1}          style={{padding:"5px 10px",fontSize:12}}>«</Btn>
+            <Btn onClick={()=>setCurrentPage(p=>p-1)}     disabled={currentPage===1}          style={{padding:"5px 10px",fontSize:12}}>‹</Btn>
+            {Array.from({length:Math.min(5,totalPages)},(_,i)=>{
+              let p = currentPage<=3 ? i+1 : currentPage+i-2;
+              if(p>totalPages) return null;
+              return <Btn key={p} onClick={()=>setCurrentPage(p)}
+                style={{padding:"5px 10px",fontSize:12,background:p===currentPage?"#0f6e56":"#fff",color:p===currentPage?"#fff":"#333",border:"1px solid #ddd"}}>{p}</Btn>;
+            })}
+            <Btn onClick={()=>setCurrentPage(p=>p+1)}     disabled={currentPage===totalPages} style={{padding:"5px 10px",fontSize:12}}>›</Btn>
+            <Btn onClick={()=>setCurrentPage(totalPages)} disabled={currentPage===totalPages} style={{padding:"5px 10px",fontSize:12}}>»</Btn>
+          </div>
+        )}
+      </div>
+      <ResponsiveTable cols={activeCols} rows={pagedRows} empty="등록된 자산이 없습니다." />
 
       {(modal==="add"||modal==="edit") && (
         <Modal title={modal==="add"?"새 자산 등록":"자산 정보 수정"} onClose={()=>setModal(null)}>
@@ -751,6 +842,9 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
   const [filterCat,    setFilterCat]   = useState("");
   const [showColMenu,  setShowColMenu] = useState(false);
   const [visibleCols,  setVisibleCols] = useState(()=>loadColPref(colPrefKey, DEFAULT_SW_COLS));
+  const [selectedIds,  setSelectedIds] = useState(new Set());
+  const [pageSize,     setPageSize]    = useState(20);
+  const [currentPage,  setCurrentPage] = useState(1);
   const fileInputRef = useRef(null);
   const colMenuRef   = useRef(null);
 
@@ -773,6 +867,47 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
     const mk=!filterCat||s.category===filterCat;
     return mt&&mc&&ms&&mk;
   });
+
+  const totalPages  = pageSize===0?1:Math.ceil(filtered.length/pageSize);
+  const pagedRows   = pageSize===0?filtered:filtered.slice((currentPage-1)*pageSize,currentPage*pageSize);
+  useEffect(()=>setCurrentPage(1),[search,filterClinic,filterStatus,filterCat,pageSize]);
+
+  const deleteSelected = async () => {
+    if(selectedIds.size===0) return alert("삭제할 항목을 선택하세요.");
+    if(!window.confirm(`선택한 ${selectedIds.size}건을 휴지통으로 이동하시겠습니까?`)) return;
+    const items=data.filter(s=>selectedIds.has(s.id));
+    for(const item of items){
+      try{
+        await api.deleteSW(item.id);
+        await api.addTrash({item_data:item,table_name:"software",deletedat:nowISO()});
+        addHistory("소프트웨어 삭제","software",item.id,item.name,"선택삭제-휴지통",JSON.stringify(item),"");
+      }catch(e){console.error(e);}
+    }
+    setSelectedIds(new Set());
+    const fresh=await api.getSW();
+    setSw(Array.isArray(fresh)?fresh:[]);
+    const newTrash=await api.getTrash();
+    setTrash(Array.isArray(newTrash)?newTrash:[]);
+  };
+
+  const totalPages  = pageSize===0?1:Math.ceil(filtered.length/pageSize);
+  const pagedRows   = pageSize===0?filtered:filtered.slice((currentPage-1)*pageSize,currentPage*pageSize);
+
+  const deleteSelected = async () => {
+    if(selectedIds.size===0) return alert("삭제할 항목을 선택하세요.");
+    if(!window.confirm(`선택한 ${selectedIds.size}건을 휴지통으로 이동하시겠습니까?`)) return;
+    const items=data.filter(s=>selectedIds.has(s.id));
+    for(const item of items){
+      try{
+        await api.deleteSW(item.id);
+        await api.addTrash({item_data:item,table_name:"software",deletedat:nowISO()});
+        addHistory("소프트웨어 삭제","software",item.id,item.name,"선택삭제-휴지통",JSON.stringify(item),"");
+      }catch(e){console.error(e);}
+    }
+    setSelectedIds(new Set());
+    const fresh=await api.getSW(); setSw(Array.isArray(fresh)?fresh:[]);
+    const nt=await api.getTrash(); setTrash(Array.isArray(nt)?nt:[]);
+  };
 
   const save = () => {
     if(!form.name) return alert("소프트웨어명을 입력하세요.");
@@ -880,7 +1015,25 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
     status:      s=>{const b=STATUS_BADGE[s.status]||{bg:"#f1f5f9",color:"#64748b"};return <span style={{background:b.bg,color:b.color,padding:"3px 8px",borderRadius:20,fontSize:11,fontWeight:700}}>{SW_STATUS[s.status]||s.status||"-"}</span>;},
     notes:       s=><span style={{fontSize:12,maxWidth:120,display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.notes||"-"}</span>,
   };
-  const activeSWCols = ALL_SW_COLS.filter(c=>visibleCols.has(c.key)).map(c=>({label:c.label,render:SW_RENDERERS[c.key]||(s=>s[c.key]||"-")}));
+  const allPageSWIds = pagedRows.map(s=>s.id);
+  const isAllSWChecked = allPageSWIds.length>0 && allPageSWIds.every(id=>selectedIds.has(id));
+  const activeSWCols = [
+    {
+      label: ()=>(
+        <input type="checkbox" checked={isAllSWChecked}
+          onChange={e=>{const n=new Set(selectedIds);if(e.target.checked){allPageSWIds.forEach(id=>n.add(id));}else{allPageSWIds.forEach(id=>n.delete(id));}setSelectedIds(n);}}
+          style={{accentColor:"#0f6e56",width:13,height:13,cursor:"pointer"}}/>
+      ),
+      minWidth:36, noClip:true,
+      render:s=>(
+        <input type="checkbox" checked={selectedIds.has(s.id)}
+          onChange={e=>{const n=new Set(selectedIds);e.target.checked?n.add(s.id):n.delete(s.id);setSelectedIds(n);}}
+          onClick={e=>e.stopPropagation()}
+          style={{accentColor:"#0f6e56",width:13,height:13,cursor:"pointer"}}/>
+      )
+    },
+    ...ALL_SW_COLS.filter(c=>visibleCols.has(c.key)).map(c=>({label:c.label,render:SW_RENDERERS[c.key]||(s=>s[c.key]||"-")}))
+  ];
   if(canEdit) activeSWCols.push({label:"관리",render:s=>(
     <div style={{display:"flex",gap:4}}>
       <Btn onClick={()=>{setForm({...s});setModal("edit");}} style={{fontSize:11,padding:"5px 7px"}}>수정</Btn>
@@ -891,7 +1044,7 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
   return (
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:12}}>
-        <h2 style={{margin:0,fontSize:20}}>소프트웨어 <span style={{fontSize:13,color:"#64748b",fontWeight:500}}>전체 {data.length}건{filtered.length!==data.length?` · 필터 ${filtered.length}건`:""}</span></h2>
+        <h2 style={{margin:0,fontSize:20}}>소프트웨어 <span style={{fontSize:13,color:"#64748b",fontWeight:500}}>전체 {data.length}건{filtered.length!==data.length?` · 필터 ${filtered.length}건`:""}{selectedIds.size>0?` · 선택 ${selectedIds.size}건`:""}</span></h2>
         <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
           <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleImport} style={{display:"none"}}/>
           <Btn onClick={()=>fileInputRef.current?.click()} disabled={importLoading}>{importLoading?"가져오는 중...":"📂 가져오기"}</Btn>
@@ -923,6 +1076,8 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
               </div>
             )}
           </div>
+          {canEdit && selectedIds.size>0 && <Btn onClick={deleteSelected} variant="danger">🗑️ 선택삭제 ({selectedIds.size})</Btn>}
+          {canEdit && selectedIds.size>0 && <Btn onClick={deleteSelected} variant="danger">🗑️ 선택삭제 ({selectedIds.size})</Btn>}
           {canEdit && <Btn onClick={()=>{setForm({status:"active"});setModal("add");}} variant="primary">+ 등록</Btn>}
         </div>
       </div>
@@ -946,7 +1101,30 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
         </select>
         {(search||filterClinic!=="all"||filterStatus||filterCat)&&<Btn onClick={()=>{setSearch("");setFilterClinic("all");setFilterStatus("");setFilterCat("");}}>초기화</Btn>}
       </div>
-      <ResponsiveTable cols={activeSWCols} rows={filtered} empty="등록된 소프트웨어가 없습니다."/>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"#64748b"}}>
+          <span>페이지당</span>
+          <select value={pageSize} onChange={e=>{setPageSize(Number(e.target.value));setCurrentPage(1);}}
+            style={{padding:"5px 8px",borderRadius:8,border:"1px solid #ddd",fontSize:13,background:"#fff"}}>
+            {[10,20,30,50,100].map(n=><option key={n} value={n}>{n}개</option>)}
+          </select>
+          <span style={{fontSize:12}}>({(currentPage-1)*pageSize+1}–{Math.min(currentPage*pageSize,filtered.length)} / {filtered.length}건)</span>
+        </div>
+        {totalPages>1 && (
+          <div style={{display:"flex",gap:4,alignItems:"center"}}>
+            <Btn onClick={()=>setCurrentPage(1)}          disabled={currentPage===1}          style={{padding:"5px 10px",fontSize:12}}>«</Btn>
+            <Btn onClick={()=>setCurrentPage(p=>p-1)}     disabled={currentPage===1}          style={{padding:"5px 10px",fontSize:12}}>‹</Btn>
+            {Array.from({length:Math.min(5,totalPages)},(_,i)=>{
+              let p=currentPage<=3?i+1:currentPage+i-2; if(p>totalPages)return null;
+              return <Btn key={p} onClick={()=>setCurrentPage(p)}
+                style={{padding:"5px 10px",fontSize:12,background:p===currentPage?"#0f6e56":"#fff",color:p===currentPage?"#fff":"#333",border:"1px solid #ddd"}}>{p}</Btn>;
+            })}
+            <Btn onClick={()=>setCurrentPage(p=>p+1)}     disabled={currentPage===totalPages} style={{padding:"5px 10px",fontSize:12}}>›</Btn>
+            <Btn onClick={()=>setCurrentPage(totalPages)} disabled={currentPage===totalPages} style={{padding:"5px 10px",fontSize:12}}>»</Btn>
+          </div>
+        )}
+      </div>
+      <ResponsiveTable cols={activeSWCols} rows={pagedRows} empty="등록된 소프트웨어가 없습니다."/>
       {(modal==="add"||modal==="edit")&&(
         <Modal title={modal==="add"?"소프트웨어 등록":"소프트웨어 수정"} onClose={()=>setModal(null)}>
           <SWForm form={form} setForm={setForm} onSave={save} loading={loading}/>
