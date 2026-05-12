@@ -307,6 +307,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
   const [form,         setForm]         = useState({});
   const [detailItem,   setDetailItem]   = useState(null);
   const [qrItem,       setQrItem]       = useState(null);
+  const [showQRScan,   setShowQRScan]   = useState(false); // 장비 목록에서 QR 스캔 모달
   const [loading,      setLoading]      = useState(false);
   const [importLoading,setImportLoading]= useState(false);
   const [searchText,   setSearchText]   = useState("");
@@ -552,6 +553,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
                 </div>
               )}
             </div>
+            <Btn onClick={()=>setShowQRScan(true)} style={{background:"#0f6e56",color:"#fff",border:"none"}}>📷 QR 스캔</Btn>
             {canEdit && <Btn onClick={()=>{setForm({assetstatus:"active",assettype:"laptop"});setModal("add");}} variant="primary">+ 등록</Btn>}
           </div>
         </div>
@@ -592,6 +594,13 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
       {modal==="qr" && qrItem && (
         <Modal title={`QR 코드 — ${qrItem.gccode||qrItem.modelname||""}`} onClose={()=>setModal(null)}>
           <QRModal item={qrItem} />
+        </Modal>
+      )}
+
+      {/* 장비 목록 내 QR 스캔 모달 */}
+      {showQRScan && (
+        <Modal title="📷 QR 스캔 — 아이메드코드 인식" onClose={()=>setShowQRScan(false)}>
+          <QRScanSection hw={data} onClose={()=>setShowQRScan(false)} />
         </Modal>
       )}
     </div>
@@ -1255,7 +1264,7 @@ function QRScannerLoader({ onLoad }) {
   return null;
 }
 
-function QRScanSection({ hw }) {
+function QRScanSection({ hw, onClose }) {
   const [jsQRReady, setJsQRReady] = useState(!!window.jsQR);
   const [scanning,  setScanning]  = useState(false);
   const [scanned,   setScanned]   = useState(null);   // 스캔된 QR 텍스트
@@ -1319,7 +1328,7 @@ function QRScanSection({ hw }) {
   return (
     <div>
       <QRScannerLoader onLoad={() => setJsQRReady(true)} />
-      <h2 style={{ fontSize:22, fontWeight:700, marginBottom:6 }}>📷 QR 스캔</h2>
+      {!onClose && <h2 style={{ fontSize:22, fontWeight:700, marginBottom:6 }}>📷 QR 스캔</h2>}
       {/* 안내 박스 */}
       <div style={{ background:"#e8f5e9", borderRadius:14, padding:"14px 18px", marginBottom:20, border:"1px solid #a7d7a8" }}>
         <div style={{ fontSize:13, fontWeight:700, color:"#0f6e56", marginBottom:6 }}>📋 사용 방법</div>
@@ -1414,6 +1423,10 @@ function QRScanSection({ hw }) {
                   <div style={{ fontSize:13, color:"#334155" }}>{asset.notes}</div>
                 </div>
               )}
+              <div style={{ marginTop:16, display:"flex", gap:10 }}>
+                <Btn onClick={reset} style={{ flex:1, textAlign:"center" }}>🔄 다시 스캔</Btn>
+                {onClose && <Btn onClick={onClose} variant="primary" style={{ flex:1, textAlign:"center" }}>✕ 닫기</Btn>}
+              </div>
             </div>
           ) : notFound && (
             <div style={{ background:"#fff1f0", borderRadius:16, padding:30, textAlign:"center", border:"1px solid #ffa39e" }}>
