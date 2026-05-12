@@ -397,8 +397,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
       };
       return `"${(ex[f.label]||"").replace(/"/g,'""')}"`;
     }).join(",");
-    const csv = "﻿" + [header, example].join("
-");
+    const csv = "\uFEFF" + [header, example].join("\n");
     triggerDownload(new Blob([csv],{type:"text/csv;charset=utf-8"}), "장비가져오기_양식.csv");
   };
 
