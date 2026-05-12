@@ -174,7 +174,7 @@ export default function App() {
     <div style={{ display:"flex", flexDirection:isMobile?"column":"row", height:"100vh", background:"#f8fafc", overflow:"hidden" }}>
       {!isMobile && (
         <div style={{ width:220, background:"#fff", borderRight:"1px solid #e2e8f0", padding:"24px 16px", display:"flex", flexDirection:"column" }}>
-          <div style={{ fontSize:16, fontWeight:800, color:"#0f6e56", marginBottom:28 }}>Asset Manager</div>
+          <div style={{ fontSize:16, fontWeight:800, color:"#0f6e56", marginBottom:28 }}>IT Asset Manager</div>
           <div style={{ flex:1 }}>
             {menuItems.map(m => (
               <div key={m.id} onClick={()=>setView(m.id)}
@@ -193,7 +193,7 @@ export default function App() {
       <div style={{ flex:1, overflowY:"auto" }}>
         {isMobile && (
           <div style={{ background:"#fff", padding:"14px 18px", borderBottom:"1px solid #e2e8f0", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, zIndex:10 }}>
-            <span style={{ fontWeight:800, color:"#0f6e56", fontSize:16 }}>Asset Manager</span>
+            <span style={{ fontWeight:800, color:"#0f6e56", fontSize:16 }}>IT Asset Manager</span>
             <Btn onClick={handleLogout} style={{ fontSize:11, padding:"5px 10px" }}>로그아웃</Btn>
           </div>
         )}
@@ -380,10 +380,10 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
 
   // 📋 가져오기 양식 다운로드
   const downloadTemplate = () => {
-    const header = HW_FIELDS.map(f => f.label).join(",");
-    const example = HW_FIELDS.map(f => {
+    const header = HW_FIELDS.filter(f => f.key !== "num").map(f => f.label).join(",");
+    const example = HW_FIELDS.filter(f => f.key !== "num").map(f => {
       const ex = {
-        "번호":"1","자산상태":"사용중","지점":"강남의원","실사날짜":"2025-01-15",
+        "자산상태":"사용중","지점":"강남의원","실사날짜":"2025-01-15",
         "GC자산코드(SAP)":"5800001141","아이메드코드":"GCSF-PC-001",
         "제조번호":"SN123456","IP":"192.168.1.100","팀(부서명)":"HIS개발팀",
         "사용자":"홍길동","PC 이름":"O034052","모델명":"NT901X5J",
@@ -432,18 +432,20 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
         const buf=await file.arrayBuffer(); const wb=XLSX.read(buf,{type:"array"});
         rawRows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
       }
-      const items=rawRows.filter(r=>Object.values(r).some(v=>v!=="")).map(row=>{
+      const existingMaxNum = Math.max(0, ...data.map(h => parseInt(h.num) || 0));
+      const items=rawRows.filter(r=>Object.values(r).some(v=>v!=="")).map((row,idx)=>{
         const item={assetstatus:"active",assettype:"laptop"};
         HW_FIELDS.forEach(f=>{const val=row[f.label]!==undefined?row[f.label]:(row[f.key]!==undefined?row[f.key]:"");if(val!=="")item[f.key]=val;});
+        if(!item.num) item.num = existingMaxNum + idx + 1;
         return item;
       });
       if(!items.length){alert("데이터 없음");return;}
-      const MAX_IMPORT = 500;
+      const MAX_IMPORT = 1000;
       if(items.length > MAX_IMPORT){
         alert(`한 번에 최대 ${MAX_IMPORT}건까지 가져올 수 있습니다.\n현재 ${items.length}건 → 처음 ${MAX_IMPORT}건만 가져옵니다.`);
         items.splice(MAX_IMPORT);
       }
-      if(!window.confirm(`${items.length}건을 가져오시겠습니까?\n\n⚠️ 한 번에 최대 500건까지 등록 가능합니다.`)) return;
+      if(!window.confirm(`${items.length}건을 가져오시겠습니까?\n\n⚠️ 한 번에 최대 1000건까지 등록 가능합니다.`)) return;
       const res=await fetch(`${BASE_URL}/assets`,{method:"POST",headers:{...H,"Prefer":"return=representation"},body:JSON.stringify(items)});
       if(!res.ok){throw new Error(await res.text());}
       await api.getHW().then(list=>setHw(Array.isArray(list)?list:[]));
@@ -1458,7 +1460,7 @@ function LoginPage({ onLogin, users }) {
   return (
     <div style={{height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f1f5f9"}}>
       <form onSubmit={submit} style={{width:340,background:"#fff",padding:40,borderRadius:24,boxShadow:"0 4px 24px rgba(0,0,0,0.08)"}}>
-        <h1 style={{textAlign:"center",color:"#0f6e56",marginBottom:6,fontSize:22}}>Asset Manager</h1>
+        <h1 style={{textAlign:"center",color:"#0f6e56",marginBottom:6,fontSize:22}}>IT Asset Manager</h1>
         <p style={{textAlign:"center",color:"#94a3b8",marginBottom:28,fontSize:12}}>GC녹십자아이메드 IT자산관리</p>
         <input placeholder="아이디" value={id} onChange={e=>setId(e.target.value)} required style={{width:"100%",padding:14,marginBottom:10,borderRadius:10,border:"1px solid #eee",fontSize:14,boxSizing:"border-box"}}/>
         <input type="password" placeholder="비밀번호" value={pw} onChange={e=>setPw(e.target.value)} required style={{width:"100%",padding:14,marginBottom:20,borderRadius:10,border:"1px solid #eee",fontSize:14,boxSizing:"border-box"}}/>
