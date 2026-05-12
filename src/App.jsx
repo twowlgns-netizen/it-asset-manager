@@ -1784,7 +1784,7 @@ function ResponsiveTable({cols,rows,empty="데이터가 없습니다."}){
                 <th key={i} style={{padding:"12px 12px",textAlign:"left",fontSize:11,color:"#94a3b8",
                   borderBottom:"1px solid #f0f0f0",whiteSpace:"nowrap",fontWeight:600,
                   position:"relative",userSelect:"none",overflow:"hidden"}}>
-                  <span style={{display:"block",overflow:"hidden",textOverflow:"ellipsis",paddingRight:8}}>{c.label}</span>
+                  <span style={{display:"block",overflow:"hidden",textOverflow:"ellipsis",paddingRight:8}}>{typeof c.label==="function"?c.label():c.label}</span>
                   <ResizeHandle onResize={delta=>handleResize(i,delta)}/>
                 </th>
               ))}
