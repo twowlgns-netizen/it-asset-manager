@@ -124,11 +124,8 @@ export default function App() {
   useEffect(() => {
     const style = document.createElement("style");
     style.textContent = `
-      /* 테이블 가로 스크롤바 항상 표시 */
-      .hw-table-wrap::-webkit-scrollbar { height: 10px; }
-      .hw-table-wrap::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 0 0 14px 14px; }
-      .hw-table-wrap::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 10px; }
-      .hw-table-wrap::-webkit-scrollbar-thumb:hover { background: #64748b; }
+      /* 테이블 내부 스크롤바 숨김 (커스텀 스크롤바 사용) */
+      .hw-no-sb::-webkit-scrollbar { display: none; }
     `;
     document.head.appendChild(style);
     return () => document.head.removeChild(style);
@@ -202,7 +199,7 @@ export default function App() {
         </div>
       )}
 
-      <div style={{ flex:1, overflowY:"auto", overflowX:"auto", minWidth:0 }}>
+      <div style={{ flex:1, overflowY:"auto", overflowX:"hidden", minWidth:0 }}>
         {isMobile && (
           <div style={{ background:"#fff", padding:"14px 18px", borderBottom:"1px solid #e2e8f0", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, zIndex:10 }}>
             <span style={{ fontWeight:800, color:"#0f6e56", fontSize:16 }}>IT Asset Manager</span>
@@ -1575,42 +1572,117 @@ function ResponsiveTable({cols,rows,empty="데이터가 없습니다."}){
     });
   };
 
+  const scrollRef = useRef(null);
+  const thumbRef  = useRef(null);
+  const trackRef  = useRef(null);
+  const totalWidth = colWidths.reduce((a,b)=>a+b,0);
+
+  // 테이블 스크롤 ↔ 썸네일 동기화
+  const syncThumb = () => {
+    const el = scrollRef.current; const tr = trackRef.current; const th = thumbRef.current;
+    if(!el||!tr||!th) return;
+    const ratio = el.clientWidth / el.scrollWidth;
+    const thumbW = Math.max(40, tr.clientWidth * ratio);
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    const maxThumb  = tr.clientWidth - thumbW;
+    th.style.width = thumbW + "px";
+    th.style.left  = (maxScroll > 0 ? (el.scrollLeft / maxScroll) * maxThumb : 0) + "px";
+    tr.style.display = ratio >= 1 ? "none" : "block";
+  };
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if(!el) return;
+    syncThumb();
+    el.addEventListener("scroll", syncThumb);
+    const ro = new ResizeObserver(syncThumb);
+    ro.observe(el);
+    return () => { el.removeEventListener("scroll", syncThumb); ro.disconnect(); };
+  }, [totalWidth, colWidths]);
+
+  // 썸 드래그
+  const thumbDragRef = useRef(null);
+  const startThumbDrag = (e) => {
+    e.preventDefault();
+    const el = scrollRef.current; const tr = trackRef.current; const th = thumbRef.current;
+    if(!el||!tr||!th) return;
+    const startX = e.clientX;
+    const startLeft = el.scrollLeft;
+    const trackW = tr.clientWidth;
+    const thumbW = th.offsetWidth;
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    const onMove = (mv) => {
+      const delta = mv.clientX - startX;
+      const ratio = delta / (trackW - thumbW);
+      el.scrollLeft = Math.max(0, Math.min(maxScroll, startLeft + ratio * maxScroll));
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
   return (
-    <div className="hw-table-wrap" style={{background:"#fff",borderRadius:14,border:"1px solid #eee",overflowX:"scroll",overflowY:"visible",scrollbarWidth:"thin",scrollbarColor:"#94a3b8 #f1f5f9"}}>
-      <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:colWidths.reduce((a,b)=>a+b,0)}}>
-        <colgroup>
-          {colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}
-        </colgroup>
-        <thead>
-          <tr style={{background:"#f8fafc"}}>
-            {cols.map((c,i)=>(
-              <th key={i} style={{padding:"12px 12px",textAlign:"left",fontSize:11,color:"#94a3b8",
-                borderBottom:"1px solid #f0f0f0",whiteSpace:"nowrap",fontWeight:600,
-                position:"relative",userSelect:"none",overflow:"hidden"}}>
-                <span style={{display:"block",overflow:"hidden",textOverflow:"ellipsis",paddingRight:8}}>{c.label}</span>
-                <ResizeHandle onResize={delta=>handleResize(i,delta)}/>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length===0
-            ?<tr><td colSpan={cols.length} style={{padding:40,textAlign:"center",color:"#94a3b8"}}>{empty}</td></tr>
-            :rows.map((row,ri)=>(
-              <tr key={ri} style={{borderBottom:"1px solid #f8fafc"}} onMouseEnter={e=>e.currentTarget.style.background="#fafafa"} onMouseLeave={e=>e.currentTarget.style.background=""}>
-                {cols.map((c,ci)=>(
-                  <td key={ci} style={{padding:"11px 12px",fontSize:13,
-                    overflow: c.noClip ? "visible" : "hidden",
-                    textOverflow: c.noClip ? "unset" : "ellipsis",
-                    whiteSpace: c.noClip ? "normal" : "nowrap"}}>
-                    {c.render?c.render(row):row[c.key]}
-                  </td>
-                ))}
-              </tr>
-            ))
-          }
-        </tbody>
-      </table>
+    <div style={{background:"#fff",borderRadius:14,border:"1px solid #eee",display:"flex",flexDirection:"column"}}>
+      {/* 테이블 영역 - 가로 스크롤, 세로 스크롤바 없음 */}
+      <div ref={scrollRef} style={{overflowX:"auto",overflowY:"visible",scrollbarWidth:"none",msOverflowStyle:"none"}}
+        onScroll={syncThumb}>
+        <style>{".hw-no-sb::-webkit-scrollbar{display:none}"}</style>
+        <div className="hw-no-sb">
+        <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:totalWidth}}>
+          <colgroup>
+            {colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}
+          </colgroup>
+          <thead>
+            <tr style={{background:"#f8fafc"}}>
+              {cols.map((c,i)=>(
+                <th key={i} style={{padding:"12px 12px",textAlign:"left",fontSize:11,color:"#94a3b8",
+                  borderBottom:"1px solid #f0f0f0",whiteSpace:"nowrap",fontWeight:600,
+                  position:"relative",userSelect:"none",overflow:"hidden"}}>
+                  <span style={{display:"block",overflow:"hidden",textOverflow:"ellipsis",paddingRight:8}}>{c.label}</span>
+                  <ResizeHandle onResize={delta=>handleResize(i,delta)}/>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length===0
+              ?<tr><td colSpan={cols.length} style={{padding:40,textAlign:"center",color:"#94a3b8"}}>{empty}</td></tr>
+              :rows.map((row,ri)=>(
+                <tr key={ri} style={{borderBottom:"1px solid #f8fafc"}} onMouseEnter={e=>e.currentTarget.style.background="#fafafa"} onMouseLeave={e=>e.currentTarget.style.background=""}>
+                  {cols.map((c,ci)=>(
+                    <td key={ci} style={{padding:"11px 12px",fontSize:13,
+                      overflow: c.noClip ? "visible" : "hidden",
+                      textOverflow: c.noClip ? "unset" : "ellipsis",
+                      whiteSpace: c.noClip ? "normal" : "nowrap"}}>
+                      {c.render?c.render(row):row[c.key]}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+        </div>
+      </div>
+      {/* 커스텀 가로 스크롤바 - 테이블 바로 아래 고정 */}
+      <div ref={trackRef} style={{position:"sticky",bottom:0,height:12,background:"#f1f5f9",borderTop:"1px solid #e2e8f0",borderRadius:"0 0 14px 14px",cursor:"pointer"}}
+        onClick={e=>{
+          const el=scrollRef.current; const tr=trackRef.current; const th=thumbRef.current;
+          if(!el||!tr||!th) return;
+          const rect=tr.getBoundingClientRect();
+          const clickX=e.clientX-rect.left;
+          const ratio=clickX/tr.clientWidth;
+          el.scrollLeft=(el.scrollWidth-el.clientWidth)*ratio;
+        }}>
+        <div ref={thumbRef} onMouseDown={startThumbDrag}
+          style={{position:"absolute",top:2,height:8,background:"#94a3b8",borderRadius:4,cursor:"grab",transition:"background 0.15s",minWidth:40}}
+          onMouseEnter={e=>e.currentTarget.style.background="#64748b"}
+          onMouseLeave={e=>e.currentTarget.style.background="#94a3b8"}
+        />
+      </div>
     </div>
   );
 }
