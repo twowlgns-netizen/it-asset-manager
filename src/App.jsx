@@ -374,7 +374,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
   // 필터 바뀌면 1페이지로
   useEffect(() => setCurrentPage(1), [searchText, filterStatus, filterType, filterClinic, pageSize]);
 
-  // 선택 초기화 (필터 변경 시)
+
 
   const deleteSelected = async () => {
     if (selectedIds.size === 0) return alert("삭제할 항목을 선택하세요.");
@@ -1152,11 +1152,11 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
       </div>
       <ResponsiveTable
         cols={[
-          { label:"아이디",  key:"loginid" },
-          { label:"이름",    key:"name"    },
-          { label:"부서",    key:"dept"    },
-          { label:"지점",    render:u=>CLINICS[u.clinic]||u.clinic||"-" },
-          { label:"권한",    render:u=>{ const r={admin:{bg:"#e8f5e9",c:"#0f6e56"},user:{bg:"#eff6ff",c:"#2563eb"},readonly:{bg:"#f1f5f9",c:"#64748b"}}[u.role]||{bg:"#f1f5f9",c:"#64748b"}; return <span style={{background:r.bg,color:r.c,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700}}>{ROLES[u.role]||u.role}</span>; }},
+          { label:"아이디",  key:"loginid", minWidth:130 },
+          { label:"이름",    key:"name",    minWidth:110 },
+          { label:"부서",    key:"dept",    minWidth:130 },
+          { label:"지점",    minWidth:130,  render:u=>CLINICS[u.clinic]||u.clinic||"-" },
+          { label:"권한",    minWidth:120,  render:u=>{ const r={admin:{bg:"#e8f5e9",c:"#0f6e56"},user:{bg:"#eff6ff",c:"#2563eb"},readonly:{bg:"#f1f5f9",c:"#64748b"}}[u.role]||{bg:"#f1f5f9",c:"#64748b"}; return <span style={{background:r.bg,color:r.c,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700}}>{ROLES[u.role]||u.role}</span>; }},
         ]}
         rows={users} empty="사용자가 없습니다."
       />
@@ -1194,12 +1194,12 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
       </div>
       <ResponsiveTable
         cols={[
-          { label:"아이디",   key:"loginid" },
-          { label:"이름",     key:"name"    },
-          { label:"부서",     key:"dept"    },
-          { label:"지점",     render:u=>CLINICS[u.clinic]||u.clinic||"-" },
-          { label:"권한",     render:u=>{ const r={admin:{bg:"#e8f5e9",c:"#0f6e56"},user:{bg:"#eff6ff",c:"#2563eb"},readonly:{bg:"#f1f5f9",c:"#64748b"}}[u.role]||{bg:"#f1f5f9",c:"#64748b"}; return <span style={{background:r.bg,color:r.c,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700}}>{ROLES[u.role]||u.role}</span>; }},
-          { label:"관리",     render:u=>isAdmin&&(
+          { label:"아이디",   key:"loginid", minWidth:130 },
+          { label:"이름",     key:"name",    minWidth:110 },
+          { label:"부서",     key:"dept",    minWidth:130 },
+          { label:"지점",     minWidth:130,  render:u=>CLINICS[u.clinic]||u.clinic||"-" },
+          { label:"권한",     minWidth:120,  render:u=>{ const r={admin:{bg:"#e8f5e9",c:"#0f6e56"},user:{bg:"#eff6ff",c:"#2563eb"},readonly:{bg:"#f1f5f9",c:"#64748b"}}[u.role]||{bg:"#f1f5f9",c:"#64748b"}; return <span style={{background:r.bg,color:r.c,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700}}>{ROLES[u.role]||u.role}</span>; }},
+          { label:"관리",     minWidth:140,  noClip:true, render:u=>isAdmin&&(
             <div style={{display:"flex",gap:5}}>
               <Btn onClick={()=>{setForm({...u});setModal("edit");}} style={{fontSize:11,padding:"5px 8px"}}>수정</Btn>
               <Btn onClick={()=>deleteUser(u)} variant="danger"     style={{fontSize:11,padding:"5px 8px"}}>삭제</Btn>
@@ -1338,19 +1338,19 @@ function HistorySection({ history }) {
 
       <ResponsiveTable
         cols={[
-          { label:"시간",    render:h=><span style={{fontSize:11,whiteSpace:"nowrap",color:"#64748b"}}>{fDT(h.ts)}</span> },
-          { label:"수행자",  key:"userName" },
-          { label:"카테고리",render:h=>{
+          { label:"시간",    minWidth:150, render:h=><span style={{fontSize:11,whiteSpace:"nowrap",color:"#64748b"}}>{fDT(h.ts)}</span> },
+          { label:"수행자",  minWidth:100, key:"userName" },
+          { label:"카테고리",minWidth:130, render:h=>{
             const b=CATEGORY_BADGE[h.aType]||{bg:"#f1f5f9",color:"#64748b"};
             return <span style={{background:b.bg,color:b.color,padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
               {HISTORY_CATEGORIES[h.aType]||h.aType||"-"}
             </span>;
           }},
-          { label:"액션",    render:h=><span style={{background:"#f1f5f9",padding:"2px 8px",borderRadius:10,fontSize:12}}>{h.action}</span> },
-          { label:"대상",    key:"aName" },
-          { label:"상세",    key:"detail" },
-          { label:"지점",    render:h=>CLINICS[h.clinic]||h.clinic||"-" },
-          { label:"변경내용",render:h=>(h.before||h.after)&&(
+          { label:"액션",    minWidth:160, render:h=><span style={{background:"#f1f5f9",padding:"2px 8px",borderRadius:10,fontSize:12}}>{h.action}</span> },
+          { label:"대상",    minWidth:120, key:"aName" },
+          { label:"상세",    minWidth:220, key:"detail" },
+          { label:"지점",    minWidth:120, render:h=>CLINICS[h.clinic]||h.clinic||"-" },
+          { label:"변경내용",minWidth:90,  noClip:true, render:h=>(h.before||h.after)&&(
             <Btn onClick={()=>setShowDetail(h)} style={{fontSize:11,padding:"4px 8px"}}>보기</Btn>
           )},
         ]}
@@ -1608,12 +1608,12 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit }) {
       <h2 style={{marginBottom:16}}>휴지통 ({trash.length}건)</h2>
       <ResponsiveTable
         cols={[
-          { label:"구분",   render:t=>{ const tb=getTable(t); return <span style={{background:tb==="assets"?"#eff6ff":"#f0fdf4",color:tb==="assets"?"#2563eb":"#0f6e56",padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700}}>{tb==="assets"?"장비":"소프트웨어"}</span>; }},
-          { label:"이름",   render:t=>{ const d=getData(t); return d.gccode||d.modelname||d.name||"-"; }},
-          { label:"팀/담당",render:t=>{ const d=getData(t); return d.team||d.assignedto||"-"; }},
-          { label:"지점",   render:t=>{ const d=getData(t); return CLINICS[d.clinic]||d.clinic||"-"; }},
-          { label:"삭제일", render:t=>fDT(t.deletedat||t.deletedAt) },
-          { label:"관리",   render:t=>canEdit&&(
+          { label:"구분",   minWidth:100, render:t=>{ const tb=getTable(t); return <span style={{background:tb==="assets"?"#eff6ff":"#f0fdf4",color:tb==="assets"?"#2563eb":"#0f6e56",padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700}}>{tb==="assets"?"장비":"소프트웨어"}</span>; }},
+          { label:"이름",   minWidth:160, render:t=>{ const d=getData(t); return d.gccode||d.modelname||d.name||"-"; }},
+          { label:"팀/담당",minWidth:130, render:t=>{ const d=getData(t); return d.team||d.assignedto||"-"; }},
+          { label:"지점",   minWidth:120, render:t=>{ const d=getData(t); return CLINICS[d.clinic]||d.clinic||"-"; }},
+          { label:"삭제일", minWidth:150, render:t=>fDT(t.deletedat||t.deletedAt) },
+          { label:"관리",   minWidth:160, noClip:true, render:t=>canEdit&&(
             <div style={{display:"flex",gap:5}}>
               <Btn onClick={()=>restore(t)} variant="warning" style={{fontSize:11,padding:"5px 8px"}}>복구</Btn>
               <Btn onClick={()=>deleteForever(t)} variant="danger" style={{fontSize:11,padding:"5px 8px"}}>영구삭제</Btn>
@@ -1696,15 +1696,21 @@ function ResizeHandle({ onResize }) {
   );
 }
 function ResponsiveTable({cols,rows,empty="데이터가 없습니다."}){
-  const [colWidths, setColWidths] = useState(() => cols.map(c => {
+  const calcWidth = (c) => {
     if(c.minWidth) return c.minWidth;
-    const len = (c.label||"").length;
-    if(len <= 2) return 60;
-    if(len <= 4) return 80;
-    if(len <= 6) return 110;
-    if(len <= 9) return 130;
-    return 150;
-  }));
+    // 한국어 글자폭 기준: 글자당 ~15px + 헤더 padding 28px + 여유
+    const labelLen = typeof c.label==="function" ? 2 : (c.label||"").length;
+    const headerW = labelLen * 15 + 36;
+    // 대표 데이터 길이 힌트가 있으면 사용
+    const dataW = (c.dataWidth||0);
+    return Math.max(headerW, dataW, 70);
+  };
+  const [colWidths, setColWidths] = useState(() => cols.map(calcWidth));
+  useEffect(() => {
+    setColWidths(prev =>
+      prev.length !== cols.length ? cols.map(calcWidth) : prev
+    );
+  }, [cols.length]);
 
   const handleResize = (i, delta) => {
     setColWidths(prev => {
@@ -1783,7 +1789,7 @@ function ResponsiveTable({cols,rows,empty="데이터가 없습니다."}){
                 <th key={i} style={{padding:"12px 12px",textAlign:"left",fontSize:11,color:"#94a3b8",
                   borderBottom:"1px solid #f0f0f0",whiteSpace:"nowrap",fontWeight:600,
                   position:"relative",userSelect:"none",overflow:"hidden"}}>
-                  <span style={{display:"block",overflow:"hidden",textOverflow:"ellipsis",paddingRight:8}}>{c.label}</span>
+                  <span style={{display:"block",overflow:"hidden",textOverflow:"ellipsis",paddingRight:8}}>{typeof c.label==="function"?c.label():c.label}</span>
                   <ResizeHandle onResize={delta=>handleResize(i,delta)}/>
                 </th>
               ))}
