@@ -571,32 +571,67 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
     } catch { alert("xlsx 패키지를 설치하세요: npm install xlsx"); }
   };
   // 한글 라벨 → enum 키 역방향 맵 (가져오기 시 변환용)
-  const LABEL_TO_KEY = (dict) => Object.fromEntries(Object.entries(dict).map(([k,v])=>[v,k]));
-  const CLINIC_LABEL_MAP      = LABEL_TO_KEY(CLINICS);
+  // "all" 같은 필터 전용 키는 제외하고 실제 저장 가능한 값만 포함
+  const LABEL_TO_KEY = (dict, excludeKeys=[]) =>
+    Object.fromEntries(Object.entries(dict).filter(([k])=>!excludeKeys.includes(k)).map(([k,v])=>[v,k]));
+  const CLINIC_LABEL_MAP      = LABEL_TO_KEY(CLINICS, ["all"]);
   const ASSETSTATUS_LABEL_MAP = LABEL_TO_KEY(ASSET_STATUS);
   const ASSETTYPE_LABEL_MAP   = LABEL_TO_KEY(ASSET_TYPES);
 
+  // select 필드별 유효 키 집합 (이미 올바른 값인지 판단용)
+  const VALID_CLINIC_KEYS      = new Set(Object.keys(CLINICS).filter(k=>k!=="all"));
+  const VALID_ASSETSTATUS_KEYS = new Set(Object.keys(ASSET_STATUS));
+  const VALID_ASSETTYPE_KEYS   = new Set(Object.keys(ASSET_TYPES));
+
   // DB에 한글로 잘못 저장된 clinic/assetstatus/assettype 값을 일괄 수정
   const fixKoreanValues = async () => {
-    const targets = data.filter(h =>
-      CLINIC_LABEL_MAP[h.clinic] ||
-      ASSETSTATUS_LABEL_MAP[h.assetstatus] ||
-      ASSETTYPE_LABEL_MAP[h.assettype]
-    );
-    if (targets.length === 0) { alert("수정할 항목이 없습니다.\n(한글로 저장된 지점/상태/구분 없음)"); return; }
-    if (!window.confirm(`한글 값이 감지된 ${targets.length}건을 영문 키로 일괄 수정하시겠습니까?\n\n예) 서울숲의원 → seoulsup`)) return;
+    // 각 항목별로 변환이 필요한 필드만 추려낸다
+    const targets = data
+      .map(h => {
+        const patch = {};
+        // clinic: 유효 키가 아니고, 한글 맵에 있으면 변환
+        if (h.clinic && !VALID_CLINIC_KEYS.has(h.clinic) && CLINIC_LABEL_MAP[h.clinic])
+          patch.clinic = CLINIC_LABEL_MAP[h.clinic];
+        // assetstatus: 유효 키가 아니고, 한글 맵에 있으면 변환
+        if (h.assetstatus && !VALID_ASSETSTATUS_KEYS.has(h.assetstatus) && ASSETSTATUS_LABEL_MAP[h.assetstatus])
+          patch.assetstatus = ASSETSTATUS_LABEL_MAP[h.assetstatus];
+        // assettype: 유효 키가 아니고, 한글 맵에 있으면 변환
+        if (h.assettype && !VALID_ASSETTYPE_KEYS.has(h.assettype) && ASSETTYPE_LABEL_MAP[h.assettype])
+          patch.assettype = ASSETTYPE_LABEL_MAP[h.assettype];
+        return Object.keys(patch).length > 0 ? { item: h, patch } : null;
+      })
+      .filter(Boolean);
+
+    if (targets.length === 0) {
+      alert("수정할 항목이 없습니다.\n모든 지점/상태/구분 값이 이미 올바르게 저장되어 있습니다.");
+      return;
+    }
+
+    // 미리보기: 어떤 값들이 바뀌는지 요약
+    const preview = targets.slice(0, 5).map(({ item, patch }) =>
+      `· ${item.gccode||item.modelname||item.imedcode||"(코드없음)"}: ${Object.entries(patch).map(([k,v])=>{
+        const orig = item[k];
+        const label = { clinic:"지점", assetstatus:"자산상태", assettype:"자산구분" }[k];
+        return `${label} "${orig}" → "${v}"`;
+      }).join(", ")}`
+    ).join("\n");
+    const more = targets.length > 5 ? `\n  ... 외 ${targets.length-5}건` : "";
+
+    if (!window.confirm(
+      `한글 값이 감지된 ${targets.length}건을 수정합니다.\n\n${preview}${more}\n\n계속하시겠습니까?`
+    )) return;
+
     setFixLoading(true);
     let ok = 0, fail = 0;
-    for (const item of targets) {
-      const patch = {};
-      if (CLINIC_LABEL_MAP[item.clinic])           patch.clinic      = CLINIC_LABEL_MAP[item.clinic];
-      if (ASSETSTATUS_LABEL_MAP[item.assetstatus]) patch.assetstatus = ASSETSTATUS_LABEL_MAP[item.assetstatus];
-      if (ASSETTYPE_LABEL_MAP[item.assettype])     patch.assettype   = ASSETTYPE_LABEL_MAP[item.assettype];
+    for (const { item, patch } of targets) {
       try {
         await api.updateHW(item.id, patch);
-        addHistory("데이터 수정(한글→키 변환)","hardware",item.id,item.gccode||item.modelname||"자산",
-          `자동수정: ${Object.entries(patch).map(([k,v])=>`${k}=${v}`).join(", ")}`,
-          JSON.stringify(item), JSON.stringify({...item,...patch}));
+        addHistory(
+          "데이터 수정(한글→키 변환)", "hardware", item.id,
+          item.gccode||item.modelname||"자산",
+          `자동수정: ${Object.entries(patch).map(([k,v])=>`${k}: "${item[k]}"→"${v}"`).join(", ")}`,
+          JSON.stringify(item), JSON.stringify({...item,...patch})
+        );
         ok++;
       } catch { fail++; }
     }
@@ -633,10 +668,13 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
           const val=row[f.label]!==undefined?row[f.label]:(row[f.key]!==undefined?row[f.key]:"");
           item[f.key] = val!=="" ? val : null;
         });
-        // 한글 라벨로 입력된 경우 enum 키로 변환
-        if(item.clinic)      item.clinic      = CLINIC_LABEL_MAP[item.clinic]      ?? item.clinic;
-        if(item.assetstatus) item.assetstatus = ASSETSTATUS_LABEL_MAP[item.assetstatus] ?? item.assetstatus;
-        if(item.assettype)   item.assettype   = ASSETTYPE_LABEL_MAP[item.assettype]   ?? item.assettype;
+        // 한글 라벨로 입력된 경우 enum 키로 변환 (이미 유효 키면 그대로 유지)
+        if(item.clinic      && !VALID_CLINIC_KEYS.has(item.clinic))
+          item.clinic      = CLINIC_LABEL_MAP[item.clinic]      ?? item.clinic;
+        if(item.assetstatus && !VALID_ASSETSTATUS_KEYS.has(item.assetstatus))
+          item.assetstatus = ASSETSTATUS_LABEL_MAP[item.assetstatus] ?? item.assetstatus;
+        if(item.assettype   && !VALID_ASSETTYPE_KEYS.has(item.assettype))
+          item.assettype   = ASSETTYPE_LABEL_MAP[item.assettype]   ?? item.assettype;
         if(!item.assetstatus) item.assetstatus = "active";
         if(!item.assettype)   item.assettype   = "laptop";
         item.num = existingMaxNum + idx + 1;
