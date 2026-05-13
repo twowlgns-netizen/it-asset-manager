@@ -136,8 +136,14 @@ const api = {
   addUser:     (d) => fetch(`${BASE_URL}/users`, { method:"POST", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(d) }).then(safeJson),
   updateUser:  (id,d) => fetch(`${BASE_URL}/users?id=eq.${id}`, { method:"PATCH", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(d) }).then(safeJson),
   deleteUser:  (id) => fetch(`${BASE_URL}/users?id=eq.${id}`, { method:"DELETE", headers:H }).then(safeJson),
-  // 히스토리
-  getHistory: () => fetch(`${BASE_URL}/history?select=*&order=ts.desc&limit=1000000`, { headers:{...H,"Range-Unit":"items","Range":"0-999999"} }).then(safeJson),
+  // 히스토리 (최신 1000건 + 전체 건수 별도 조회)
+  getHistory: () => fetch(`${BASE_URL}/history?select=*&order=ts.desc&limit=1000`, { headers:{...H,"Range-Unit":"items","Range":"0-999"} }).then(safeJson),
+  getHistoryCount: async () => {
+    const res = await fetch(`${BASE_URL}/history?select=id`, { headers:{...H,"Prefer":"count=exact","Range-Unit":"items","Range":"0-0"} });
+    const ct = res.headers.get("Content-Range"); // e.g. "0-0/1234"
+    const total = ct ? parseInt(ct.split("/")[1]) : 0;
+    return isNaN(total) ? 0 : total;
+  },
   addHistory: (d) => fetch(`${BASE_URL}/history`, { method:"POST", headers:H, body:JSON.stringify(d) }).then(safeJson),
   // 휴지통
   getTrash:    () => fetch(`${BASE_URL}/trash?select=*&order=created_at.desc`, { headers:H }).then(safeJson),
@@ -188,6 +194,7 @@ export default function App() {
   const [sw,      setSw]      = useState([]);
   const [users,   setUsers]   = useState([]);
   const [history, setHistory] = useState([]);
+  const [historyCount, setHistoryCount] = useState(0);
   const [trash,   setTrash]   = useState([]);
 
   const handleLogin  = async (user) => {
@@ -229,6 +236,7 @@ export default function App() {
     api.getSW().then(d=>setSw(Array.isArray(d)?d:[])).catch(console.error);
     api.getUsers().then(d=>setUsers(Array.isArray(d)?d:[])).catch(console.error);
     api.getHistory().then(d=>{ const l=Array.isArray(d)?d:[]; setHistory(l.sort((a,b)=>new Date(b.ts)-new Date(a.ts))); }).catch(console.error);
+    api.getHistoryCount().then(n=>setHistoryCount(n)).catch(console.error);
     api.getTrash().then(d=>setTrash(Array.isArray(d)?d:[])).catch(console.error);
   }, []);
 
@@ -242,7 +250,10 @@ export default function App() {
   const addHistory = useCallback((action, aType, aId, aName, detail, before="", after="") => {
     if (!currentUser) return;
     api.addHistory({ ts: nowISO(), action, atype: aType, aid: aId, aname: aName, detail, before, after, username: currentUser.name, userrole: currentUser.role, clinic: currentUser.clinic || "" })
-      .then(() => api.getHistory().then(d => { const l=Array.isArray(d)?d:[]; setHistory(l.sort((a,b)=>new Date(b.ts)-new Date(a.ts))); }))
+      .then(() => Promise.all([
+        api.getHistory().then(d => { const l=Array.isArray(d)?d:[]; setHistory(l.sort((a,b)=>new Date(b.ts)-new Date(a.ts))); }),
+        api.getHistoryCount().then(n=>setHistoryCount(n)),
+      ]))
       .catch(console.error);
   }, [currentUser]);
 
@@ -288,12 +299,12 @@ export default function App() {
           </div>
         )}
         <main style={{ padding:isMobile?"16px":"32px", paddingBottom:40 }}>
-          {view==="dashboard"  && <DashboardSection  hw={hw} sw={sw} history={history} isMobile={isMobile} />}
+          {view==="dashboard"  && <DashboardSection  hw={hw} sw={sw} history={history} historyCount={historyCount} isMobile={isMobile} />}
           {view==="hardware"   && <HardwareSection   data={hw} setHw={setHw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} />}
           {view==="software"   && <SoftwareSection   data={sw} setSw={setSw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} />}
           {view==="users"      && <UsersSection      users={users} setUsers={setUsers} addHistory={addHistory} isAdmin={isAdmin} currentUser={currentUser} />}
           {view==="history"    && <HistorySection    history={history} />}
-          {view==="qrscan"    && <QRScanSection     hw={hw} />}
+          {view==="qrscan"    && <QRScanSection     hw={hw} currentUser={currentUser} />}
           {view==="trash"      && <TrashSection      trash={trash} setTrash={setTrash} setHw={setHw} setSw={setSw} addHistory={addHistory} canEdit={canEdit} />}
         </main>
       </div>
@@ -315,7 +326,7 @@ export default function App() {
 // ================================================================
 // 📊 [대시보드]
 // ================================================================
-function DashboardSection({ hw, sw, history, isMobile }) {
+function DashboardSection({ hw, sw, history, historyCount, isMobile }) {
   const [clinicFilter, setClinicFilter] = useState("all");
   const filtered = clinicFilter === "all" ? hw : hw.filter(h => h.clinic === clinicFilter);
 
@@ -340,7 +351,7 @@ function DashboardSection({ hw, sw, history, isMobile }) {
     { label:"폐기",       statusKey:"disposed",        value:hwStats.disposed,        textColor:"#cf1322" },
     { label:"폐기대상",   statusKey:"dispose_target",  value:hwStats.dispose_target,  textColor:"#d97706" },
     { label:"소프트웨어", statusKey:null,              value:sw.length,               textColor:"#7c3aed" },
-    { label:"활동 로그",  statusKey:null,              value:history.length,          textColor:"#0891b2" },
+    { label:"활동 로그",  statusKey:null,              value:historyCount||history.length, textColor:"#0891b2" },
   ];
 
   return (
@@ -416,14 +427,15 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
   const [showQRScan,   setShowQRScan]   = useState(false);
   const [loading,      setLoading]      = useState(false);
   const [importLoading,setImportLoading]= useState(false);
+  const [fixLoading,   setFixLoading]   = useState(false);
   const [searchText,   setSearchText]   = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterType,   setFilterType]   = useState("");
   const [filterClinic, setFilterClinic] = useState("all");
   const [showColMenu,  setShowColMenu]  = useState(false);
-  const [selectedIds,  setSelectedIds]  = useState(new Set()); // 선택된 항목 ID
-  const [pageSize,     setPageSize]     = useState(20);         // 페이지당 표시 수
-  const [currentPage,  setCurrentPage]  = useState(1);         // 현재 페이지
+  const [selectedIds,  setSelectedIds]  = useState(new Set());
+  const [pageSize,     setPageSize]     = useState(20);
+  const [currentPage,  setCurrentPage]  = useState(1);
   const hwColPrefKey = `hw_cols_${currentUser?.loginid||"default"}`;
   const [visibleCols,  setVisibleCols]  = useState(()=>loadColPref(hwColPrefKey, DEFAULT_HW_COLS));
   const fileInputRef = useRef(null);
@@ -558,6 +570,77 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
       XLSX.utils.book_append_sheet(wb,ws,"장비목록"); XLSX.writeFile(wb,`장비목록_${todayStr()}.xlsx`);
     } catch { alert("xlsx 패키지를 설치하세요: npm install xlsx"); }
   };
+  // 한글 라벨 → enum 키 역방향 맵 (가져오기 시 변환용)
+  // "all" 같은 필터 전용 키는 제외하고 실제 저장 가능한 값만 포함
+  const LABEL_TO_KEY = (dict, excludeKeys=[]) =>
+    Object.fromEntries(Object.entries(dict).filter(([k])=>!excludeKeys.includes(k)).map(([k,v])=>[v,k]));
+  const CLINIC_LABEL_MAP      = LABEL_TO_KEY(CLINICS, ["all"]);
+  const ASSETSTATUS_LABEL_MAP = LABEL_TO_KEY(ASSET_STATUS);
+  const ASSETTYPE_LABEL_MAP   = LABEL_TO_KEY(ASSET_TYPES);
+
+  // select 필드별 유효 키 집합 (이미 올바른 값인지 판단용)
+  const VALID_CLINIC_KEYS      = new Set(Object.keys(CLINICS).filter(k=>k!=="all"));
+  const VALID_ASSETSTATUS_KEYS = new Set(Object.keys(ASSET_STATUS));
+  const VALID_ASSETTYPE_KEYS   = new Set(Object.keys(ASSET_TYPES));
+
+  // DB에 한글로 잘못 저장된 clinic/assetstatus/assettype 값을 일괄 수정
+  const fixKoreanValues = async () => {
+    // 각 항목별로 변환이 필요한 필드만 추려낸다
+    const targets = data
+      .map(h => {
+        const patch = {};
+        // clinic: 유효 키가 아니고, 한글 맵에 있으면 변환
+        if (h.clinic && !VALID_CLINIC_KEYS.has(h.clinic) && CLINIC_LABEL_MAP[h.clinic])
+          patch.clinic = CLINIC_LABEL_MAP[h.clinic];
+        // assetstatus: 유효 키가 아니고, 한글 맵에 있으면 변환
+        if (h.assetstatus && !VALID_ASSETSTATUS_KEYS.has(h.assetstatus) && ASSETSTATUS_LABEL_MAP[h.assetstatus])
+          patch.assetstatus = ASSETSTATUS_LABEL_MAP[h.assetstatus];
+        // assettype: 유효 키가 아니고, 한글 맵에 있으면 변환
+        if (h.assettype && !VALID_ASSETTYPE_KEYS.has(h.assettype) && ASSETTYPE_LABEL_MAP[h.assettype])
+          patch.assettype = ASSETTYPE_LABEL_MAP[h.assettype];
+        return Object.keys(patch).length > 0 ? { item: h, patch } : null;
+      })
+      .filter(Boolean);
+
+    if (targets.length === 0) {
+      alert("수정할 항목이 없습니다.\n모든 지점/상태/구분 값이 이미 올바르게 저장되어 있습니다.");
+      return;
+    }
+
+    // 미리보기: 어떤 값들이 바뀌는지 요약
+    const preview = targets.slice(0, 5).map(({ item, patch }) =>
+      `· ${item.gccode||item.modelname||item.imedcode||"(코드없음)"}: ${Object.entries(patch).map(([k,v])=>{
+        const orig = item[k];
+        const label = { clinic:"지점", assetstatus:"자산상태", assettype:"자산구분" }[k];
+        return `${label} "${orig}" → "${v}"`;
+      }).join(", ")}`
+    ).join("\n");
+    const more = targets.length > 5 ? `\n  ... 외 ${targets.length-5}건` : "";
+
+    if (!window.confirm(
+      `한글 값이 감지된 ${targets.length}건을 수정합니다.\n\n${preview}${more}\n\n계속하시겠습니까?`
+    )) return;
+
+    setFixLoading(true);
+    let ok = 0, fail = 0;
+    for (const { item, patch } of targets) {
+      try {
+        await api.updateHW(item.id, patch);
+        addHistory(
+          "데이터 수정(한글→키 변환)", "hardware", item.id,
+          item.gccode||item.modelname||"자산",
+          `자동수정: ${Object.entries(patch).map(([k,v])=>`${k}: "${item[k]}"→"${v}"`).join(", ")}`,
+          JSON.stringify(item), JSON.stringify({...item,...patch})
+        );
+        ok++;
+      } catch { fail++; }
+    }
+    const fresh = await api.getHW();
+    setHw(Array.isArray(fresh)?fresh:[]);
+    setFixLoading(false);
+    alert(`완료: ${ok}건 수정${fail>0?`, ${fail}건 실패`:""}`);
+  };
+
   const parseCSVLine = (line) => {
     const res=[]; let cur=""; let inQ=false;
     for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}else if(c===","&&!inQ){res.push(cur.trim());cur="";}else cur+=c;}
@@ -585,6 +668,13 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
           const val=row[f.label]!==undefined?row[f.label]:(row[f.key]!==undefined?row[f.key]:"");
           item[f.key] = val!=="" ? val : null;
         });
+        // 한글 라벨로 입력된 경우 enum 키로 변환 (이미 유효 키면 그대로 유지)
+        if(item.clinic      && !VALID_CLINIC_KEYS.has(item.clinic))
+          item.clinic      = CLINIC_LABEL_MAP[item.clinic]      ?? item.clinic;
+        if(item.assetstatus && !VALID_ASSETSTATUS_KEYS.has(item.assetstatus))
+          item.assetstatus = ASSETSTATUS_LABEL_MAP[item.assetstatus] ?? item.assetstatus;
+        if(item.assettype   && !VALID_ASSETTYPE_KEYS.has(item.assettype))
+          item.assettype   = ASSETTYPE_LABEL_MAP[item.assettype]   ?? item.assettype;
         if(!item.assetstatus) item.assetstatus = "active";
         if(!item.assettype)   item.assettype   = "laptop";
         item.num = existingMaxNum + idx + 1;
@@ -682,6 +772,12 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
             <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleImport} style={{display:"none"}}/>
             <Btn onClick={()=>fileInputRef.current?.click()} disabled={importLoading}>{importLoading?"가져오는 중...":"📂 가져오기"}</Btn>
             <Btn onClick={downloadTemplate}>📋 양식 다운로드</Btn>
+            {canEdit && (
+              <Btn onClick={fixKoreanValues} disabled={fixLoading}
+                style={{background:"#fff7ed",color:"#c2410c",border:"1px solid #fed7aa"}}>
+                {fixLoading?"수정 중...":"🔧 한글값 일괄수정"}
+              </Btn>
+            )}
             <Btn onClick={exportCSV}>⬇️ CSV</Btn>
             <Btn onClick={exportExcel}>⬇️ Excel</Btn>
             <div ref={colMenuRef} style={{position:"relative"}}>
@@ -783,7 +879,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
       {/* 장비 목록 내 QR 스캔 모달 */}
       {showQRScan && (
         <Modal title="📷 QR 스캔 — 아이메드코드 인식" onClose={()=>setShowQRScan(false)}>
-          <QRScanSection hw={data} onClose={()=>setShowQRScan(false)} />
+          <QRScanSection hw={data} onClose={()=>setShowQRScan(false)} currentUser={currentUser} />
         </Modal>
       )}
     </div>
@@ -1505,17 +1601,67 @@ function QRScannerLoader({ onLoad }) {
   return null;
 }
 
-function QRScanSection({ hw, onClose }) {
-  const [jsQRReady, setJsQRReady] = useState(!!window.jsQR);
-  const [scanning,  setScanning]  = useState(false);
-  const [scanned,   setScanned]   = useState(null);
-  const [asset,     setAsset]     = useState(null);
-  const [notFound,  setNotFound]  = useState(false);
-  const [camError,  setCamError]  = useState("");
-  const videoRef  = useRef(null);
-  const canvasRef = useRef(null);
-  const streamRef = useRef(null);
-  const animRef   = useRef(null);
+// QR 스캔 결과 자산정보 표시 필드 전체 목록 (순서 고정)
+const QR_ALL_FIELDS = [
+  { key:"gccode",       label:"GC자산코드"   },
+  { key:"imedcode",     label:"아이메드코드"  },
+  { key:"assetstatus",  label:"자산상태"     },
+  { key:"assettype",    label:"자산구분"     },
+  { key:"modelname",    label:"모델명"       },
+  { key:"serialnumber", label:"제조번호"     },
+  { key:"clinic",       label:"지점"         },
+  { key:"team",         label:"팀(부서명)"   },
+  { key:"username",     label:"사용자"       },
+  { key:"pcname",       label:"PC이름"       },
+  { key:"ip",           label:"IP"           },
+  { key:"macaddress",   label:"MAC Address"  },
+  { key:"location",     label:"위치(건물)"   },
+  { key:"corporation",  label:"법인"         },
+  { key:"manufacturer", label:"제조사"       },
+  { key:"cpu",          label:"CPU"          },
+  { key:"memory",       label:"Memory"       },
+  { key:"hdd",          label:"하드디스크"   },
+  { key:"purpose",      label:"목적/기능"    },
+  { key:"receiptdate",  label:"수령일"       },
+  { key:"purchasedate", label:"구입일"       },
+  { key:"purchaseinfo", label:"구매정보"     },
+  { key:"inspectiondate",label:"실사날짜"    },
+  { key:"notes",        label:"비고"         },
+];
+const QR_DEFAULT_FIELDS = new Set([
+  "gccode","imedcode","assetstatus","assettype","modelname","serialnumber",
+  "clinic","team","username","location"
+]);
+
+function QRScanSection({ hw, onClose, currentUser }) {
+  const qrColKey = `qr_cols_${currentUser?.loginid||"default"}`;
+  const [jsQRReady,   setJsQRReady]   = useState(!!window.jsQR);
+  const [scanning,    setScanning]    = useState(false);
+  const [scanned,     setScanned]     = useState(null);
+  const [asset,       setAsset]       = useState(null);
+  const [notFound,    setNotFound]    = useState(false);
+  const [camError,    setCamError]    = useState("");
+  const [showColMenu, setShowColMenu] = useState(false);
+  const [visibleQRCols, setVisibleQRCols] = useState(() => loadColPref(qrColKey, QR_DEFAULT_FIELDS));
+  const videoRef   = useRef(null);
+  const canvasRef  = useRef(null);
+  const streamRef  = useRef(null);
+  const animRef    = useRef(null);
+  const colMenuRef = useRef(null);
+
+  useEffect(() => {
+    const h = (e) => { if (colMenuRef.current && !colMenuRef.current.contains(e.target)) setShowColMenu(false); };
+    document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  const toggleQRCol = (key) => setVisibleQRCols(prev => {
+    const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key);
+    saveColPref(qrColKey, n); return n;
+  });
+  const toggleQRAll = (all) => {
+    const n = all ? new Set(QR_ALL_FIELDS.map(f=>f.key)) : new Set(["gccode"]);
+    saveColPref(qrColKey, n); setVisibleQRCols(n);
+  };
 
   const stopScan = () => {
     if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
@@ -1554,64 +1700,85 @@ function QRScanSection({ hw, onClose }) {
         animRef.current = requestAnimationFrame(tick);
       };
       animRef.current = requestAnimationFrame(tick);
-    } catch (err) {
-      setCamError("카메라 접근 오류: " + err.message);
-    }
+    } catch (err) { setCamError("카메라 접근 오류: " + err.message); }
   };
 
   const reset = () => { setScanned(null); setAsset(null); setNotFound(false); setCamError(""); };
 
-  // 전체 자산 필드 목록 (값 있는 것만 표시)
-  const ASSET_FIELD_LIST = [
-    { label:"번호",          key:"num"          },
-    { label:"자산상태",      key:"assetstatus",  fmt: v => ASSET_STATUS[v]||v },
-    { label:"지점",          key:"clinic",       fmt: v => CLINICS[v]||v },
-    { label:"GC자산코드",    key:"gccode"        },
-    { label:"아이메드코드",  key:"imedcode"      },
-    { label:"제조번호",      key:"serialnumber"  },
-    { label:"IP",           key:"ip"            },
-    { label:"팀(부서명)",    key:"team"          },
-    { label:"사용자",        key:"username"      },
-    { label:"PC 이름",       key:"pcname"        },
-    { label:"모델명",        key:"modelname"     },
-    { label:"자산구분",      key:"assettype",    fmt: v => ASSET_TYPES[v]||v },
-    { label:"MAC Address",  key:"macaddress"    },
-    { label:"수령일",        key:"receiptdate"   },
-    { label:"구입일",        key:"purchasedate"  },
-    { label:"제조사",        key:"manufacturer"  },
-    { label:"CPU",          key:"cpu"           },
-    { label:"Memory",       key:"memory"        },
-    { label:"하드디스크",    key:"hdd"           },
-    { label:"목적/기능",     key:"purpose"       },
-    { label:"법인",          key:"corporation"   },
-    { label:"위치(건물)",    key:"location"      },
-    { label:"구매정보",      key:"purchaseinfo"  },
-    { label:"모니터수량",    key:"monitorcount"  },
-    { label:"유료라이선스",  key:"paidlicense"   },
-    { label:"실사날짜",      key:"inspectiondate"},
-    { label:"비고",          key:"notes",        full:true },
-  ];
+  // 자산 필드 값 포맷
+  const formatVal = (key, val) => {
+    if (!val && val !== 0) return null;
+    if (key === "assetstatus") return ASSET_STATUS[val] || val;
+    if (key === "assettype")   return ASSET_TYPES[val]  || val;
+    if (key === "clinic")      return CLINICS[val]       || val;
+    return String(val);
+  };
 
   return (
-    <div style={{ paddingBottom: onClose ? 0 : 80 }}>
+    <div style={{ display:"flex", flexDirection:"column", height: onClose ? "auto" : "calc(100vh - 120px)", minHeight:0 }}>
       <QRScannerLoader onLoad={() => setJsQRReady(true)} />
-      {!onClose && <h2 style={{ fontSize:20, fontWeight:700, marginBottom:10 }}>📷 QR 스캔</h2>}
 
-      {/* 스캔 화면 (결과 없을 때만 표시) */}
+      {/* 헤더 */}
+      {!onClose && (
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12, flexShrink:0 }}>
+          <h2 style={{ fontSize:22, fontWeight:700, margin:0 }}>📷 QR 스캔</h2>
+          {/* 컬럼 설정 버튼 — 스캔 결과가 있을 때만 */}
+          {asset && (
+            <div ref={colMenuRef} style={{ position:"relative" }}>
+              <Btn onClick={()=>setShowColMenu(v=>!v)} style={{ fontSize:12 }}>
+                🔧 표시항목 {visibleQRCols.size}/{QR_ALL_FIELDS.length}
+              </Btn>
+              {showColMenu && (
+                <div style={{ position:"absolute", top:"calc(100% + 6px)", right:0, background:"#fff", border:"1px solid #e2e8f0",
+                  borderRadius:14, boxShadow:"0 8px 32px rgba(0,0,0,0.12)", zIndex:500, padding:14, width:260 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8, paddingBottom:8, borderBottom:"1px solid #f0f0f0" }}>
+                    <span style={{ fontSize:12, fontWeight:700 }}>표시 항목 선택</span>
+                    <div style={{ display:"flex", gap:8 }}>
+                      <button onClick={()=>toggleQRAll(true)}  style={{ fontSize:11, color:"#0f6e56", border:"none", background:"none", cursor:"pointer", fontWeight:600 }}>전체</button>
+                      <button onClick={()=>toggleQRAll(false)} style={{ fontSize:11, color:"#cf1322", border:"none", background:"none", cursor:"pointer", fontWeight:600 }}>초기화</button>
+                    </div>
+                  </div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:2, maxHeight:280, overflowY:"auto" }}>
+                    {QR_ALL_FIELDS.map(f => (
+                      <label key={f.key} style={{ display:"flex", alignItems:"center", gap:5, padding:"4px", borderRadius:6, cursor:"pointer", fontSize:12,
+                        background: visibleQRCols.has(f.key)?"#e8f5e9":"transparent",
+                        color: visibleQRCols.has(f.key)?"#0f6e56":"#64748b",
+                        fontWeight: visibleQRCols.has(f.key)?600:400 }}>
+                        <input type="checkbox" checked={visibleQRCols.has(f.key)} onChange={()=>toggleQRCol(f.key)}
+                          style={{ accentColor:"#0f6e56", width:12, height:12 }}/>
+                        {f.label}
+                      </label>
+                    ))}
+                  </div>
+                  <div style={{ marginTop:8, paddingTop:8, borderTop:"1px solid #f0f0f0", fontSize:11, color:"#94a3b8" }}>💾 계정별 자동 저장됩니다</div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 스캔 전 안내 + 카메라 + 버튼 — 스크롤 없이 한 화면에 */}
       {!scanned && (
-        <div>
-          {/* 안내 박스 - 작게 */}
-          <div style={{ background:"#e8f5e9", borderRadius:12, padding:"10px 14px", marginBottom:12, border:"1px solid #a7d7a8" }}>
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:10, flex:1, minHeight:0 }}>
+          {/* 안내 박스 (간결하게) */}
+          <div style={{ background:"#e8f5e9", borderRadius:12, padding:"10px 14px", border:"1px solid #a7d7a8", width:"100%", flexShrink:0 }}>
             <div style={{ fontSize:12, fontWeight:700, color:"#0f6e56", marginBottom:4 }}>📋 사용 방법</div>
             <div style={{ fontSize:11, color:"#334155", lineHeight:1.7 }}>
-              자산 스티커의 QR코드(아이메드코드) → 카메라로 인식 → 자산 정보 표시
+              1. 자산 스티커의 QR코드를 찾으세요&nbsp;&nbsp;
+              2. QR코드 값 = <b>아이메드 코드</b> (예: GCSF-PC-039)<br/>
+              3. 스캔 시작 버튼을 누르고 카메라를 QR코드에 갖다 대세요&nbsp;&nbsp;
+              4. 자동 인식 후 자산 상세정보가 표시됩니다
             </div>
           </div>
 
-          {/* 카메라 영역 - 모바일 최적화: 높이 고정 */}
+          {/* 카메라 영역 — 화면 높이에 맞게 유동 */}
           <div style={{ position:"relative", borderRadius:16, overflow:"hidden", background:"#000",
-            width:"100%", height: onClose ? 240 : 260, marginBottom:12 }}>
-            <video ref={videoRef} playsInline muted style={{ width:"100%", height:"100%", objectFit:"cover", display:scanning?"block":"none" }} />
+            width:"100%", maxWidth:360,
+            height: onClose ? 260 : "min(55vw, 280px)",
+            flexShrink:0 }}>
+            <video ref={videoRef} playsInline muted
+              style={{ width:"100%", height:"100%", objectFit:"cover", display:scanning?"block":"none" }} />
             {!scanning && (
               <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:8 }}>
                 <span style={{ fontSize:48 }}>📷</span>
@@ -1619,106 +1786,126 @@ function QRScanSection({ hw, onClose }) {
               </div>
             )}
             {scanning && (
-              <>
-                <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
-                  <div style={{ width:"55%", height:"70%", border:"3px solid #0f6e56", borderRadius:12, boxShadow:"0 0 0 9999px rgba(0,0,0,0.4)" }} />
-                </div>
-                <div style={{ position:"absolute", bottom:10, left:0, right:0, textAlign:"center" }}>
-                  <span style={{ background:"rgba(0,0,0,0.6)", color:"#fff", fontSize:11, padding:"4px 12px", borderRadius:20 }}>
-                    QR코드를 중앙 박스에 맞춰주세요
-                  </span>
-                </div>
-              </>
+              <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
+                <div style={{ width:"60%", height:"60%", border:"3px solid #0f6e56", borderRadius:12, boxShadow:"0 0 0 9999px rgba(0,0,0,0.35)" }} />
+              </div>
             )}
           </div>
           <canvas ref={canvasRef} style={{ display:"none" }} />
 
           {camError && (
-            <div style={{ color:"#cf1322", fontSize:12, marginBottom:10, padding:"8px 12px", background:"#fff1f0", borderRadius:8 }}>
+            <div style={{ color:"#cf1322", fontSize:12, padding:"8px 14px", background:"#fff1f0", borderRadius:10, width:"100%", flexShrink:0 }}>
               {camError}
             </div>
           )}
 
-          {/* 버튼 - 항상 보이도록 */}
-          <div style={{ display:"flex", gap:10 }}>
+          {/* 스캔 시작/중지 버튼 — 항상 보이도록 flexShrink:0 */}
+          <div style={{ flexShrink:0, width:"100%", maxWidth:360 }}>
             {!scanning
               ? <Btn onClick={startScan} variant="primary" disabled={!jsQRReady}
-                  style={{ flex:1, fontSize:15, padding:"14px", borderRadius:12, textAlign:"center" }}>
-                  {jsQRReady ? "📷 스캔 시작" : "⏳ 로딩 중..."}
+                  style={{ fontSize:15, padding:"13px 0", borderRadius:14, width:"100%", textAlign:"center" }}>
+                  {jsQRReady ? "📷 스캔 시작" : "라이브러리 로딩 중..."}
                 </Btn>
               : <Btn onClick={stopScan} variant="danger"
-                  style={{ flex:1, fontSize:15, padding:"14px", borderRadius:12, textAlign:"center" }}>
+                  style={{ fontSize:15, padding:"13px 0", borderRadius:14, width:"100%", textAlign:"center" }}>
                   ⏹ 중지
                 </Btn>
             }
-            {onClose && <Btn onClick={onClose} style={{ fontSize:14, padding:"14px 20px" }}>✕ 닫기</Btn>}
+            {scanning && <p style={{ color:"#64748b", fontSize:11, marginTop:8, textAlign:"center" }}>QR코드를 카메라 중앙 박스에 맞춰주세요</p>}
           </div>
         </div>
       )}
 
       {/* 스캔 결과 */}
       {scanned && (
-        <div>
-          {/* 인식된 코드 + 다시 스캔 */}
+        <div style={{ overflowY:"auto", flex:1, minHeight:0 }}>
+          {/* 인식된 코드 + 다시스캔 */}
           <div style={{ background:"#f8fafc", borderRadius:12, padding:"12px 16px", marginBottom:12,
-            display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            display:"flex", justifyContent:"space-between", alignItems:"center", flexShrink:0 }}>
             <div>
-              <div style={{ fontSize:10, color:"#94a3b8", marginBottom:2 }}>인식된 코드</div>
-              <div style={{ fontSize:15, fontWeight:700, color:"#0f6e56" }}>{scanned}</div>
+              <div style={{ fontSize:11, color:"#94a3b8", marginBottom:2 }}>인식된 코드</div>
+              <div style={{ fontSize:16, fontWeight:700, color:"#0f6e56" }}>{scanned}</div>
             </div>
-            <div style={{ display:"flex", gap:8 }}>
-              <Btn onClick={reset} style={{ fontSize:12, padding:"8px 14px" }}>🔄 다시 스캔</Btn>
-              {onClose && <Btn onClick={onClose} style={{ fontSize:12, padding:"8px 14px" }}>✕ 닫기</Btn>}
-            </div>
+            <Btn onClick={reset} style={{ fontSize:12 }}>🔄 다시 스캔</Btn>
           </div>
 
-          {/* 자산 찾음 */}
-          {asset && (
-            <div style={{ background:"#fff", borderRadius:16, border:"2px solid #0f6e56" }}>
-              {/* 헤더 */}
-              <div style={{ background:"#0f6e56", borderRadius:"14px 14px 0 0", padding:"12px 16px",
-                display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <span style={{ fontSize:15, fontWeight:700, color:"#fff" }}>✅ 자산 정보</span>
-                {(() => {
-                  const s = STATUS_BADGE[asset.assetstatus]||{bg:"rgba(255,255,255,0.2)",color:"#fff"};
-                  return <span style={{ background:s.bg, color:s.color, padding:"3px 12px", borderRadius:20, fontSize:11, fontWeight:700 }}>
-                    {ASSET_STATUS[asset.assetstatus]||asset.assetstatus||"-"}
-                  </span>;
-                })()}
-              </div>
-              {/* 전체 필드 */}
-              <div style={{ padding:"12px 14px" }}>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                  {ASSET_FIELD_LIST.filter(f => !f.full && asset[f.key] !== undefined && asset[f.key] !== null && asset[f.key] !== "").map((f, i) => (
-                    <div key={i} style={{ background:"#f8fafc", borderRadius:8, padding:"8px 10px",
-                      gridColumn: f.full ? "1 / -1" : "auto" }}>
-                      <div style={{ fontSize:10, color:"#94a3b8", marginBottom:2 }}>{f.label}</div>
-                      <div style={{ fontSize:12, fontWeight:600, color:"#1e293b", wordBreak:"break-all" }}>
-                        {f.fmt ? f.fmt(asset[f.key]) : String(asset[f.key])}
+          {/* 자산 정보 카드 */}
+          {asset ? (
+            <div style={{ background:"#fff", borderRadius:18, border:"2px solid #0f6e56", padding:18 }}>
+              {/* 헤더: 타이틀 + 상태배지 + 컬럼설정(모달 내부용) */}
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14, flexWrap:"wrap", gap:8 }}>
+                <h3 style={{ margin:0, fontSize:16, color:"#0f6e56" }}>✅ 자산 정보</h3>
+                <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                  {(() => { const s=STATUS_BADGE[asset.assetstatus]||{bg:"#f1f5f9",color:"#64748b"};
+                    return <span style={{ background:s.bg, color:s.color, padding:"4px 12px", borderRadius:20, fontSize:11, fontWeight:700 }}>{ASSET_STATUS[asset.assetstatus]||asset.assetstatus}</span>; })()}
+                  {/* 컬럼 설정 버튼 (모달 내부 / 모바일 공용) */}
+                  <div ref={onClose ? colMenuRef : undefined} style={{ position:"relative" }}>
+                    <Btn onClick={()=>setShowColMenu(v=>!v)} style={{ fontSize:11, padding:"5px 8px" }}>
+                      🔧 항목 {visibleQRCols.size}/{QR_ALL_FIELDS.length}
+                    </Btn>
+                    {showColMenu && (
+                      <div style={{ position:"absolute", top:"calc(100% + 6px)", right:0, background:"#fff",
+                        border:"1px solid #e2e8f0", borderRadius:14, boxShadow:"0 8px 32px rgba(0,0,0,0.15)",
+                        zIndex:600, padding:14, width:250 }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8, paddingBottom:8, borderBottom:"1px solid #f0f0f0" }}>
+                          <span style={{ fontSize:12, fontWeight:700 }}>표시 항목 선택</span>
+                          <div style={{ display:"flex", gap:8 }}>
+                            <button onClick={()=>toggleQRAll(true)}  style={{ fontSize:11, color:"#0f6e56", border:"none", background:"none", cursor:"pointer", fontWeight:600 }}>전체</button>
+                            <button onClick={()=>toggleQRAll(false)} style={{ fontSize:11, color:"#cf1322", border:"none", background:"none", cursor:"pointer", fontWeight:600 }}>초기화</button>
+                          </div>
+                        </div>
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:2, maxHeight:260, overflowY:"auto" }}>
+                          {QR_ALL_FIELDS.map(f => (
+                            <label key={f.key} style={{ display:"flex", alignItems:"center", gap:5, padding:"4px", borderRadius:6, cursor:"pointer", fontSize:11,
+                              background: visibleQRCols.has(f.key)?"#e8f5e9":"transparent",
+                              color: visibleQRCols.has(f.key)?"#0f6e56":"#64748b",
+                              fontWeight: visibleQRCols.has(f.key)?600:400 }}>
+                              <input type="checkbox" checked={visibleQRCols.has(f.key)} onChange={()=>toggleQRCol(f.key)}
+                                style={{ accentColor:"#0f6e56", width:12, height:12 }}/>
+                              {f.label}
+                            </label>
+                          ))}
+                        </div>
+                        <div style={{ marginTop:8, paddingTop:8, borderTop:"1px solid #f0f0f0", fontSize:11, color:"#94a3b8" }}>💾 계정별 자동 저장</div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-                {/* 비고 (전체 너비) */}
-                {asset.notes && (
-                  <div style={{ marginTop:8, background:"#fffbe6", borderRadius:8, padding:"8px 10px" }}>
-                    <div style={{ fontSize:10, color:"#94a3b8", marginBottom:2 }}>비고(이력관리)</div>
-                    <div style={{ fontSize:12, color:"#334155" }}>{asset.notes}</div>
+                    )}
                   </div>
-                )}
+                </div>
+              </div>
+
+              {/* 자산 필드 그리드 — 선택된 컬럼만, 값 있는 항목만 */}
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                {QR_ALL_FIELDS
+                  .filter(f => visibleQRCols.has(f.key))
+                  .map(f => {
+                    const raw = asset[f.key];
+                    const val = formatVal(f.key, raw);
+                    if (!val) return null;
+                    const isWide = f.key === "notes" || f.key === "purchaseinfo";
+                    return (
+                      <div key={f.key} style={{ background:"#f8fafc", borderRadius:10, padding:"10px 12px",
+                        gridColumn: isWide ? "1 / -1" : "auto" }}>
+                        <div style={{ fontSize:11, color:"#94a3b8", marginBottom:3 }}>{f.label}</div>
+                        <div style={{ fontSize:13, fontWeight:600, color:"#1e293b", wordBreak:"break-all" }}>{val}</div>
+                      </div>
+                    );
+                  })}
+              </div>
+
+              <div style={{ marginTop:14, display:"flex", gap:8 }}>
+                <Btn onClick={reset} style={{ flex:1, textAlign:"center" }}>🔄 다시 스캔</Btn>
+                {onClose && <Btn onClick={onClose} variant="primary" style={{ flex:1, textAlign:"center" }}>✕ 닫기</Btn>}
               </div>
             </div>
-          )}
-
-          {/* 자산 못찾음 */}
-          {notFound && (
-            <div style={{ background:"#fff1f0", borderRadius:14, padding:"24px 20px", textAlign:"center", border:"1px solid #ffa39e" }}>
+          ) : notFound && (
+            <div style={{ background:"#fff1f0", borderRadius:16, padding:24, textAlign:"center", border:"1px solid #ffa39e" }}>
               <div style={{ fontSize:36, marginBottom:10 }}>❌</div>
               <div style={{ fontSize:15, fontWeight:700, color:"#cf1322", marginBottom:6 }}>자산을 찾을 수 없습니다</div>
-              <div style={{ fontSize:12, color:"#64748b", marginBottom:4 }}>
+              <div style={{ fontSize:13, color:"#64748b", marginBottom:6 }}>
                 아이메드 코드 <b style={{color:"#cf1322"}}>{scanned}</b> 에 해당하는 자산이 없습니다.
               </div>
-              <div style={{ fontSize:11, color:"#94a3b8" }}>DB의 아이메드 자산코드 컬럼값을 확인해주세요.</div>
+              <div style={{ fontSize:11, color:"#94a3b8", marginBottom:14 }}>DB에 해당 아이메드 코드가 등록되어 있는지 확인해주세요.</div>
+              <Btn onClick={reset}>🔄 다시 스캔</Btn>
             </div>
           )}
         </div>
