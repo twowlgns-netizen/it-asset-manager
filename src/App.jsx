@@ -552,12 +552,33 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
         const buf=await file.arrayBuffer(); const wb=XLSX.read(buf,{type:"array"});
         rawRows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
       }
+      // select 필드 한글label → 영문key 역변환 맵 생성
+      const selectReverseMap = {};
+      HW_FIELDS.forEach(f => {
+        if (f.type === "select" && f.options) {
+          selectReverseMap[f.key] = {};
+          Object.entries(f.options).forEach(([k, v]) => {
+            selectReverseMap[f.key][v] = k;           // "사용중" → "active"
+            selectReverseMap[f.key][k] = k;           // "active" → "active" (이미 영문이면 그대로)
+            selectReverseMap[f.key][v.toLowerCase()] = k;
+          });
+        }
+      });
+
       const existingMaxNum = Math.max(0, ...data.map(h => parseInt(h.num) || 0));
       const items=rawRows.filter(r=>Object.values(r).some(v=>v!=="")).map((row,idx)=>{
         const item={};
         HW_FIELDS.forEach(f=>{
-          const val=row[f.label]!==undefined?row[f.label]:(row[f.key]!==undefined?row[f.key]:"");
-          item[f.key] = val!=="" ? val : null;
+          let val=row[f.label]!==undefined?row[f.label]:(row[f.key]!==undefined?row[f.key]:"");
+          if (val !== "" && val !== null) {
+            val = String(val).trim();
+            // select 필드면 한글→key 변환
+            if (f.type === "select" && selectReverseMap[f.key]) {
+              const mapped = selectReverseMap[f.key][val] || selectReverseMap[f.key][val.toLowerCase()];
+              if (mapped) val = mapped;
+            }
+          }
+          item[f.key] = val !== "" ? val : null;
         });
         if(!item.assetstatus) item.assetstatus = "active";
         if(!item.assettype)   item.assettype   = "laptop";
@@ -628,7 +649,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
           onChange={e=>{ const n=new Set(selectedIds); if(e.target.checked){allPageIds.forEach(id=>n.add(id));}else{allPageIds.forEach(id=>n.delete(id));} setSelectedIds(n); }}
           style={{accentColor:"#0f6e56",width:13,height:13,cursor:"pointer"}} />
       ),
-      minWidth:36, noClip:true,
+      minWidth:44, noClip:true,
       render: h=>(
         <input type="checkbox" checked={selectedIds.has(h.id)}
           onChange={e=>{ const n=new Set(selectedIds); e.target.checked?n.add(h.id):n.delete(h.id); setSelectedIds(n); }}
@@ -1028,9 +1049,30 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
         const buf=await file.arrayBuffer();const wb=XLSX.read(buf,{type:"array"});
         rawRows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
       }
+      const swSelectMap = {};
+      SW_FIELDS.forEach(f => {
+        if (f.type === "select" && f.options) {
+          swSelectMap[f.key] = {};
+          Object.entries(f.options).forEach(([k, v]) => {
+            swSelectMap[f.key][v] = k;
+            swSelectMap[f.key][k] = k;
+          });
+        }
+      });
+
       const items=rawRows.filter(r=>Object.values(r).some(v=>v!=="")).map(row=>{
         const item={status:"active"};
-        SW_FIELDS.forEach(f=>{const val=row[f.label]!==undefined?row[f.label]:(row[f.key]!==undefined?row[f.key]:"");if(val!=="")item[f.key]=val;});
+        SW_FIELDS.forEach(f=>{
+          let val=row[f.label]!==undefined?row[f.label]:(row[f.key]!==undefined?row[f.key]:"");
+          if (val !== "" && val !== null) {
+            val = String(val).trim();
+            if (f.type === "select" && swSelectMap[f.key]) {
+              const mapped = swSelectMap[f.key][val] || swSelectMap[f.key][val.toLowerCase()];
+              if (mapped) val = mapped;
+            }
+          }
+          if(val!=="") item[f.key]=val;
+        });
         return item;
       });
       if(!items.length){alert("데이터 없음");return;}
@@ -1081,7 +1123,7 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
           onChange={e=>{const n=new Set(selectedIds);if(e.target.checked){allPageSWIds.forEach(id=>n.add(id));}else{allPageSWIds.forEach(id=>n.delete(id));}setSelectedIds(n);}}
           style={{accentColor:"#0f6e56",width:13,height:13,cursor:"pointer"}}/>
       ),
-      minWidth:36, noClip:true,
+      minWidth:44, noClip:true,
       render:s=>(
         <input type="checkbox" checked={selectedIds.has(s.id)}
           onChange={e=>{const n=new Set(selectedIds);e.target.checked?n.add(s.id):n.delete(s.id);setSelectedIds(n);}}
