@@ -152,7 +152,7 @@ export default function App() {
   useEffect(() => {
     const style = document.createElement("style");
     style.textContent = `
-      html, body { overflow: hidden; height: 100%; margin: 0; padding: 0; }
+      html, body { overflow: hidden; height: 100%; margin: 0; padding: 0; box-sizing: border-box; }
       .hw-no-sb::-webkit-scrollbar { display: none; }
       ::-webkit-scrollbar { width: 4px; height: 4px; }
       ::-webkit-scrollbar-track { background: transparent; }
@@ -179,7 +179,7 @@ export default function App() {
     // 로그인 로그 기록
     const ip = await getClientIP();
     const clientInfo = getClientInfo();
-    const detail = `IP: ${ip} / 환경: ${clientInfo}`;
+    const detail = `계정: ${user.name} (${user.loginid||""}) / 권한: ${ROLES[user.role]||user.role} / 지점: ${CLINICS[user.clinic]||user.clinic||"전체"} / IP: ${ip} / 환경: ${clientInfo}`;
     api.addHistory({
       ts: nowISO(), action:"로그인", atype:"user", aid: user.id||"", aname: user.name,
       detail, before:"", after:"",
@@ -192,7 +192,7 @@ export default function App() {
     if (currentUser) {
       const ip = await getClientIP();
       const clientInfo = getClientInfo();
-      const detail = `IP: ${ip} / 환경: ${clientInfo}`;
+      const detail = `계정: ${currentUser.name} (${currentUser.loginid||""}) / 권한: ${ROLES[currentUser.role]||currentUser.role} / 지점: ${CLINICS[currentUser.clinic]||currentUser.clinic||"전체"} / IP: ${ip} / 환경: ${clientInfo}`;
       await api.addHistory({
         ts: nowISO(), action:"로그아웃", atype:"user", aid: currentUser.id||"", aname: currentUser.name,
         detail, before:"", after:"",
@@ -261,7 +261,7 @@ export default function App() {
         </div>
       )}
 
-      <div style={{ flex:1, overflowY:"auto", overflowX:"hidden", minWidth:0 }}>
+      <div style={{ flex:1, overflowY:"auto", overflowX:"hidden", minWidth:0, scrollbarGutter:"stable" }}>
         {isMobile && (
           <div style={{ background:"#fff", padding:"14px 18px", borderBottom:"1px solid #e2e8f0", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, zIndex:10 }}>
             <span onClick={()=>{ setView("dashboard"); window.location.reload(); }} style={{ fontWeight:800, color:"#0f6e56", fontSize:16, cursor:"pointer", userSelect:"none" }}>IT Asset Manager</span>
@@ -1450,18 +1450,7 @@ function HistorySection({ history }) {
       />
       {showDetail && (
         <Modal title="변경 내용 상세" onClose={()=>setShowDetail(null)}>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            {["before","after"].map(k=>(
-              <div key={k}>
-                <div style={{fontSize:12,fontWeight:700,color:k==="before"?"#cf1322":"#0f6e56",marginBottom:6}}>
-                  {k==="before"?"변경 전":"변경 후"}
-                </div>
-                <pre style={{background:"#f8fafc",padding:10,borderRadius:8,fontSize:11,overflow:"auto",maxHeight:260,margin:0,whiteSpace:"pre-wrap",wordBreak:"break-all"}}>
-                  {(() => { try { return showDetail[k]?JSON.stringify(JSON.parse(showDetail[k]),null,2):"(없음)"; } catch { return showDetail[k]||"(없음)"; } })()}
-                </pre>
-              </div>
-            ))}
-          </div>
+          <ChangeDetailView item={showDetail} />
         </Modal>
       )}
     </div>
@@ -1775,6 +1764,113 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit }) {
   );
 }
 
+
+// ================================================================
+// 📋 [변경내용 뷰] JSON 코드값 → 사람이 읽기 좋은 형태로 변환
+// ================================================================
+function ChangeDetailView({ item }) {
+  // JSON 문자열 → 객체로 파싱
+  const parse = (val) => {
+    if (!val) return null;
+    try { return JSON.parse(val); } catch { return null; }
+  };
+
+  const before = parse(item.before);
+  const after  = parse(item.after);
+
+  // key → 한국어 라벨 매핑 (장비+소프트웨어+사용자 통합)
+  const LABEL_MAP = {
+    // 장비
+    num:"번호", assetstatus:"자산상태", clinic:"지점", inspectiondate:"실사날짜",
+    gccode:"GC자산코드", imedcode:"아이메드코드", serialnumber:"제조번호",
+    ip:"IP", team:"팀(부서명)", username:"사용자", pcname:"PC이름",
+    modelname:"모델명", assettype:"자산구분", notes:"비고",
+    macaddress:"MAC Address", receiptdate:"수령일", purchasedate:"구입일",
+    manufacturer:"제조사", cpu:"CPU", memory:"Memory", hdd:"하드디스크",
+    purpose:"목적/기능", corporation:"법인", location:"위치",
+    purchaseinfo:"구매정보", monitorcount:"모니터수량", paidlicense:"유료라이선스",
+    // 소프트웨어
+    name:"소프트웨어명", category:"카테고리", version:"버전", vendor:"벤더",
+    licensetype:"라이선스유형", licensekey:"라이선스키", quantity:"수량",
+    cost:"비용", expirydate:"만료일", assignedto:"담당자", status:"상태",
+    // 사용자
+    loginid:"아이디", dept:"부서", role:"권한",
+    // 공통
+    created_at:"등록일", id:"ID",
+  };
+
+  // 값 → 표시용 텍스트 변환
+  const displayVal = (k, v) => {
+    if (v === null || v === undefined || v === "") return "-";
+    if (k === "assetstatus") return ASSET_STATUS[v] || v;
+    if (k === "assettype")   return ASSET_TYPES[v]  || v;
+    if (k === "clinic")      return CLINICS[v]       || v;
+    if (k === "status")      return SW_STATUS[v]     || ASSET_STATUS[v] || v;
+    if (k === "category")    return SW_CATEGORIES[v] || v;
+    if (k === "role")        return ROLES[v]         || v;
+    return String(v);
+  };
+
+  // 두 객체의 모든 키를 합쳐서 비교
+  const allKeys = [...new Set([
+    ...Object.keys(before || {}),
+    ...Object.keys(after  || {}),
+  ])].filter(k => !["id","created_at"].includes(k));
+
+  // 변경된 키만 필터
+  const changedKeys = allKeys.filter(k => {
+    const bv = displayVal(k, before?.[k]);
+    const av = displayVal(k, after?.[k]);
+    return bv !== av;
+  });
+
+  // 변경된 것이 없으면 전체 표시
+  const keysToShow = changedKeys.length > 0 ? changedKeys : allKeys;
+
+  // 단순 텍스트인 경우 (before/after가 JSON이 아님)
+  if (!before && !after) {
+    return (
+      <div style={{padding:"16px",color:"#64748b",fontSize:13}}>
+        변경 내용이 없거나 JSON 형식이 아닙니다.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{maxHeight:"65vh",overflowY:"auto"}}>
+      {changedKeys.length > 0 && (
+        <div style={{background:"#fef3c7",borderRadius:10,padding:"8px 14px",marginBottom:12,fontSize:12,color:"#d97706",fontWeight:600}}>
+          ⚡ {changedKeys.length}개 항목이 변경되었습니다
+        </div>
+      )}
+      <div style={{display:"grid",gridTemplateColumns:"auto 1fr 1fr",gap:"0"}}>
+        {/* 헤더 */}
+        <div style={{padding:"8px 12px",background:"#f8fafc",fontWeight:700,fontSize:11,color:"#94a3b8",borderBottom:"1px solid #e2e8f0"}}>항목</div>
+        <div style={{padding:"8px 12px",background:"#fff1f0",fontWeight:700,fontSize:11,color:"#cf1322",borderBottom:"1px solid #e2e8f0"}}>변경 전</div>
+        <div style={{padding:"8px 12px",background:"#e8f5e9",fontWeight:700,fontSize:11,color:"#0f6e56",borderBottom:"1px solid #e2e8f0"}}>변경 후</div>
+        {/* 데이터 행 */}
+        {keysToShow.map((k,i) => {
+          const bv = displayVal(k, before?.[k]);
+          const av = displayVal(k, after?.[k]);
+          const isChanged = bv !== av;
+          const bg = i%2===0 ? "#fff" : "#f8fafc";
+          return [
+            <div key={k+"-label"} style={{padding:"7px 12px",background:bg,fontSize:12,fontWeight:isChanged?700:400,color:isChanged?"#334155":"#64748b",borderBottom:"1px solid #f0f0f0",whiteSpace:"nowrap"}}>
+              {LABEL_MAP[k] || k}
+            </div>,
+            <div key={k+"-before"} style={{padding:"7px 12px",background:isChanged?"#fff8f8":bg,fontSize:12,color:isChanged?"#cf1322":"#64748b",borderBottom:"1px solid #f0f0f0",wordBreak:"break-all"}}>
+              {bv === "-" ? <span style={{color:"#d1d5db"}}>-</span> : bv}
+            </div>,
+            <div key={k+"-after"} style={{padding:"7px 12px",background:isChanged?"#f0fdf4":bg,fontSize:12,color:isChanged?"#0f6e56":"#64748b",borderBottom:"1px solid #f0f0f0",wordBreak:"break-all",fontWeight:isChanged?600:400}}>
+              {av === "-" ? <span style={{color:"#d1d5db"}}>-</span> : av}
+            </div>,
+          ];
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ================================================================
 // 🔑 [로그인]
 // ================================================================
@@ -1954,9 +2050,9 @@ function ResponsiveTable({cols,rows,empty="데이터가 없습니다."}){
           <thead>
             <tr style={{background:"#f8fafc"}}>
               {cols.map((c,i)=>(
-                <th key={i} style={{padding:"12px 12px",textAlign:"left",fontSize:11,color:"#94a3b8",
+                <th key={i} style={{padding:i===0?"12px 8px 12px 12px":"12px 12px",textAlign:"left",fontSize:11,color:"#94a3b8",
                   borderBottom:"1px solid #f0f0f0",whiteSpace:"nowrap",fontWeight:600,
-                  position:"relative",userSelect:"none",overflow:"hidden"}}>
+                  position:"relative",userSelect:"none",overflow:i===0?"visible":"hidden"}}>
                   <span style={{display:"block",overflow:"hidden",textOverflow:"ellipsis",paddingRight:8}}>{typeof c.label==="function"?c.label():c.label}</span>
                   <ResizeHandle onResize={delta=>handleResize(i,delta)}/>
                 </th>
@@ -1969,7 +2065,7 @@ function ResponsiveTable({cols,rows,empty="데이터가 없습니다."}){
               :rows.map((row,ri)=>(
                 <tr key={ri} style={{borderBottom:"1px solid #f8fafc"}} onMouseEnter={e=>e.currentTarget.style.background="#fafafa"} onMouseLeave={e=>e.currentTarget.style.background=""}>
                   {cols.map((c,ci)=>(
-                    <td key={ci} style={{padding:"11px 12px",fontSize:13,
+                    <td key={ci} style={{padding:ci===0?"11px 8px 11px 12px":"11px 12px",fontSize:13,
                       overflow: c.noClip ? "visible" : "hidden",
                       textOverflow: c.noClip ? "unset" : "ellipsis",
                       whiteSpace: c.noClip ? "normal" : "nowrap"}}>
