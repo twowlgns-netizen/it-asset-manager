@@ -136,8 +136,14 @@ const api = {
   addUser:     (d) => fetch(`${BASE_URL}/users`, { method:"POST", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(d) }).then(safeJson),
   updateUser:  (id,d) => fetch(`${BASE_URL}/users?id=eq.${id}`, { method:"PATCH", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(d) }).then(safeJson),
   deleteUser:  (id) => fetch(`${BASE_URL}/users?id=eq.${id}`, { method:"DELETE", headers:H }).then(safeJson),
-  // 히스토리
-  getHistory: () => fetch(`${BASE_URL}/history?select=*&order=ts.desc&limit=1000000`, { headers:{...H,"Range-Unit":"items","Range":"0-999999"} }).then(safeJson),
+  // 히스토리 (최신 1000건 + 전체 건수 별도 조회)
+  getHistory: () => fetch(`${BASE_URL}/history?select=*&order=ts.desc&limit=1000`, { headers:{...H,"Range-Unit":"items","Range":"0-999"} }).then(safeJson),
+  getHistoryCount: async () => {
+    const res = await fetch(`${BASE_URL}/history?select=id`, { headers:{...H,"Prefer":"count=exact","Range-Unit":"items","Range":"0-0"} });
+    const ct = res.headers.get("Content-Range"); // e.g. "0-0/1234"
+    const total = ct ? parseInt(ct.split("/")[1]) : 0;
+    return isNaN(total) ? 0 : total;
+  },
   addHistory: (d) => fetch(`${BASE_URL}/history`, { method:"POST", headers:H, body:JSON.stringify(d) }).then(safeJson),
   // 휴지통
   getTrash:    () => fetch(`${BASE_URL}/trash?select=*&order=created_at.desc`, { headers:H }).then(safeJson),
@@ -188,6 +194,7 @@ export default function App() {
   const [sw,      setSw]      = useState([]);
   const [users,   setUsers]   = useState([]);
   const [history, setHistory] = useState([]);
+  const [historyCount, setHistoryCount] = useState(0);
   const [trash,   setTrash]   = useState([]);
 
   const handleLogin  = async (user) => {
@@ -229,6 +236,7 @@ export default function App() {
     api.getSW().then(d=>setSw(Array.isArray(d)?d:[])).catch(console.error);
     api.getUsers().then(d=>setUsers(Array.isArray(d)?d:[])).catch(console.error);
     api.getHistory().then(d=>{ const l=Array.isArray(d)?d:[]; setHistory(l.sort((a,b)=>new Date(b.ts)-new Date(a.ts))); }).catch(console.error);
+    api.getHistoryCount().then(n=>setHistoryCount(n)).catch(console.error);
     api.getTrash().then(d=>setTrash(Array.isArray(d)?d:[])).catch(console.error);
   }, []);
 
@@ -242,7 +250,10 @@ export default function App() {
   const addHistory = useCallback((action, aType, aId, aName, detail, before="", after="") => {
     if (!currentUser) return;
     api.addHistory({ ts: nowISO(), action, atype: aType, aid: aId, aname: aName, detail, before, after, username: currentUser.name, userrole: currentUser.role, clinic: currentUser.clinic || "" })
-      .then(() => api.getHistory().then(d => { const l=Array.isArray(d)?d:[]; setHistory(l.sort((a,b)=>new Date(b.ts)-new Date(a.ts))); }))
+      .then(() => Promise.all([
+        api.getHistory().then(d => { const l=Array.isArray(d)?d:[]; setHistory(l.sort((a,b)=>new Date(b.ts)-new Date(a.ts))); }),
+        api.getHistoryCount().then(n=>setHistoryCount(n)),
+      ]))
       .catch(console.error);
   }, [currentUser]);
 
@@ -288,7 +299,7 @@ export default function App() {
           </div>
         )}
         <main style={{ padding:isMobile?"16px":"32px", paddingBottom:40 }}>
-          {view==="dashboard"  && <DashboardSection  hw={hw} sw={sw} history={history} isMobile={isMobile} />}
+          {view==="dashboard"  && <DashboardSection  hw={hw} sw={sw} history={history} historyCount={historyCount} isMobile={isMobile} />}
           {view==="hardware"   && <HardwareSection   data={hw} setHw={setHw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} />}
           {view==="software"   && <SoftwareSection   data={sw} setSw={setSw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} />}
           {view==="users"      && <UsersSection      users={users} setUsers={setUsers} addHistory={addHistory} isAdmin={isAdmin} currentUser={currentUser} />}
@@ -315,7 +326,7 @@ export default function App() {
 // ================================================================
 // 📊 [대시보드]
 // ================================================================
-function DashboardSection({ hw, sw, history, isMobile }) {
+function DashboardSection({ hw, sw, history, historyCount, isMobile }) {
   const [clinicFilter, setClinicFilter] = useState("all");
   const filtered = clinicFilter === "all" ? hw : hw.filter(h => h.clinic === clinicFilter);
 
@@ -340,7 +351,7 @@ function DashboardSection({ hw, sw, history, isMobile }) {
     { label:"폐기",       statusKey:"disposed",        value:hwStats.disposed,        textColor:"#cf1322" },
     { label:"폐기대상",   statusKey:"dispose_target",  value:hwStats.dispose_target,  textColor:"#d97706" },
     { label:"소프트웨어", statusKey:null,              value:sw.length,               textColor:"#7c3aed" },
-    { label:"활동 로그",  statusKey:null,              value:history.length,          textColor:"#0891b2" },
+    { label:"활동 로그",  statusKey:null,              value:historyCount||history.length, textColor:"#0891b2" },
   ];
 
   return (
@@ -416,14 +427,15 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
   const [showQRScan,   setShowQRScan]   = useState(false);
   const [loading,      setLoading]      = useState(false);
   const [importLoading,setImportLoading]= useState(false);
+  const [fixLoading,   setFixLoading]   = useState(false);
   const [searchText,   setSearchText]   = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterType,   setFilterType]   = useState("");
   const [filterClinic, setFilterClinic] = useState("all");
   const [showColMenu,  setShowColMenu]  = useState(false);
-  const [selectedIds,  setSelectedIds]  = useState(new Set()); // 선택된 항목 ID
-  const [pageSize,     setPageSize]     = useState(20);         // 페이지당 표시 수
-  const [currentPage,  setCurrentPage]  = useState(1);         // 현재 페이지
+  const [selectedIds,  setSelectedIds]  = useState(new Set());
+  const [pageSize,     setPageSize]     = useState(20);
+  const [currentPage,  setCurrentPage]  = useState(1);
   const hwColPrefKey = `hw_cols_${currentUser?.loginid||"default"}`;
   const [visibleCols,  setVisibleCols]  = useState(()=>loadColPref(hwColPrefKey, DEFAULT_HW_COLS));
   const fileInputRef = useRef(null);
@@ -564,6 +576,36 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
   const ASSETSTATUS_LABEL_MAP = LABEL_TO_KEY(ASSET_STATUS);
   const ASSETTYPE_LABEL_MAP   = LABEL_TO_KEY(ASSET_TYPES);
 
+  // DB에 한글로 잘못 저장된 clinic/assetstatus/assettype 값을 일괄 수정
+  const fixKoreanValues = async () => {
+    const targets = data.filter(h =>
+      CLINIC_LABEL_MAP[h.clinic] ||
+      ASSETSTATUS_LABEL_MAP[h.assetstatus] ||
+      ASSETTYPE_LABEL_MAP[h.assettype]
+    );
+    if (targets.length === 0) { alert("수정할 항목이 없습니다.\n(한글로 저장된 지점/상태/구분 없음)"); return; }
+    if (!window.confirm(`한글 값이 감지된 ${targets.length}건을 영문 키로 일괄 수정하시겠습니까?\n\n예) 서울숲의원 → seoulsup`)) return;
+    setFixLoading(true);
+    let ok = 0, fail = 0;
+    for (const item of targets) {
+      const patch = {};
+      if (CLINIC_LABEL_MAP[item.clinic])           patch.clinic      = CLINIC_LABEL_MAP[item.clinic];
+      if (ASSETSTATUS_LABEL_MAP[item.assetstatus]) patch.assetstatus = ASSETSTATUS_LABEL_MAP[item.assetstatus];
+      if (ASSETTYPE_LABEL_MAP[item.assettype])     patch.assettype   = ASSETTYPE_LABEL_MAP[item.assettype];
+      try {
+        await api.updateHW(item.id, patch);
+        addHistory("데이터 수정(한글→키 변환)","hardware",item.id,item.gccode||item.modelname||"자산",
+          `자동수정: ${Object.entries(patch).map(([k,v])=>`${k}=${v}`).join(", ")}`,
+          JSON.stringify(item), JSON.stringify({...item,...patch}));
+        ok++;
+      } catch { fail++; }
+    }
+    const fresh = await api.getHW();
+    setHw(Array.isArray(fresh)?fresh:[]);
+    setFixLoading(false);
+    alert(`완료: ${ok}건 수정${fail>0?`, ${fail}건 실패`:""}`);
+  };
+
   const parseCSVLine = (line) => {
     const res=[]; let cur=""; let inQ=false;
     for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}else if(c===","&&!inQ){res.push(cur.trim());cur="";}else cur+=c;}
@@ -692,6 +734,12 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
             <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleImport} style={{display:"none"}}/>
             <Btn onClick={()=>fileInputRef.current?.click()} disabled={importLoading}>{importLoading?"가져오는 중...":"📂 가져오기"}</Btn>
             <Btn onClick={downloadTemplate}>📋 양식 다운로드</Btn>
+            {canEdit && (
+              <Btn onClick={fixKoreanValues} disabled={fixLoading}
+                style={{background:"#fff7ed",color:"#c2410c",border:"1px solid #fed7aa"}}>
+                {fixLoading?"수정 중...":"🔧 한글값 일괄수정"}
+              </Btn>
+            )}
             <Btn onClick={exportCSV}>⬇️ CSV</Btn>
             <Btn onClick={exportExcel}>⬇️ Excel</Btn>
             <div ref={colMenuRef} style={{position:"relative"}}>
