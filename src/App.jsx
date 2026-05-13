@@ -141,7 +141,19 @@ const api = {
   addHistory: (d) => fetch(`${BASE_URL}/history`, { method:"POST", headers:H, body:JSON.stringify(d) }).then(safeJson),
   // 휴지통
   getTrash:    () => fetch(`${BASE_URL}/trash?select=*&order=created_at.desc`, { headers:H }).then(safeJson),
-  addTrash:    (d) => fetch(`${BASE_URL}/trash`, { method:"POST", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify({...d, item_data: JSON.stringify(typeof d.item_data === "string" ? JSON.parse(d.item_data) : d.item_data)}) }).then(safeJson),
+  addTrash: async (d) => {
+    // item_data는 jsonb 컬럼 → 반드시 JS 객체로 전송
+    const itemObj = typeof d.item_data === "string"
+      ? (() => { try { return JSON.parse(d.item_data); } catch { return d.item_data; } })()
+      : d.item_data;
+    const body = { ...d, item_data: itemObj };
+    const res = await fetch(`${BASE_URL}/trash`, {
+      method: "POST",
+      headers: { ...H, "Prefer": "return=representation" },
+      body: JSON.stringify(body)
+    });
+    return safeJson(res);
+  },
   deleteTrash: (id) => fetch(`${BASE_URL}/trash?id=eq.${id}`, { method:"DELETE", headers:H }).then(safeJson),
 };
 
@@ -154,13 +166,16 @@ export default function App() {
     style.textContent = `
       html, body { overflow: hidden; height: 100%; margin: 0; padding: 0; box-sizing: border-box; }
       .hw-no-sb::-webkit-scrollbar { display: none; }
-      /* 페이지 스크롤바 */
-      .page-scroll-area::-webkit-scrollbar { width: 8px; }
-      .page-scroll-area::-webkit-scrollbar-track { background: #f1f5f9; }
-      .page-scroll-area::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
-      .page-scroll-area::-webkit-scrollbar-thumb:hover { background: #64748b; }
-      /* 기타 스크롤바 숨김 */
-      ::-webkit-scrollbar { width: 0; height: 0; }
+      /* 메인 우측 세로 스크롤바 - 테이블 하단 스크롤바와 동일 스타일 */
+      .main-content-area::-webkit-scrollbar { width: 12px; }
+      .main-content-area::-webkit-scrollbar-track { background: #f1f5f9; border-left: 1px solid #e2e8f0; }
+      .main-content-area::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; border: 2px solid #f1f5f9; }
+      .main-content-area::-webkit-scrollbar-thumb:hover { background: #64748b; }
+      .main-content-area { scrollbar-width: thin; scrollbar-color: #94a3b8 #f1f5f9; }
+      /* 기타 스크롤바 최소화 */
+      ::-webkit-scrollbar { width: 4px; height: 4px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
     `;
     document.head.appendChild(style);
     return () => document.head.removeChild(style);
@@ -265,14 +280,14 @@ export default function App() {
         </div>
       )}
 
-      <div style={{ flex:1, display:"flex", flexDirection:"column", overflowY:"hidden", overflowX:"hidden", minWidth:0 }}>
+      <div className="main-content-area" style={{ flex:1, overflowY:"auto", overflowX:"hidden", minWidth:0 }}>
         {isMobile && (
           <div style={{ background:"#fff", padding:"14px 18px", borderBottom:"1px solid #e2e8f0", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, zIndex:10 }}>
             <span onClick={()=>{ setView("dashboard"); window.location.reload(); }} style={{ fontWeight:800, color:"#0f6e56", fontSize:16, cursor:"pointer", userSelect:"none" }}>IT Asset Manager</span>
             <Btn onClick={handleLogout} style={{ fontSize:11, padding:"5px 10px" }}>로그아웃</Btn>
           </div>
         )}
-        <main className="page-scroll-area" style={{ padding:isMobile?"16px":"32px", paddingBottom:40, flex:1, overflowY:"auto", overflowX:"hidden" }}>
+        <main style={{ padding:isMobile?"16px":"32px", paddingBottom:40 }}>
           {view==="dashboard"  && <DashboardSection  hw={hw} sw={sw} history={history} isMobile={isMobile} />}
           {view==="hardware"   && <HardwareSection   data={hw} setHw={setHw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} />}
           {view==="software"   && <SoftwareSection   data={sw} setSw={setSw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} />}
@@ -455,20 +470,22 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
     for (const item of items) {
       const name = item.gccode||item.modelname||"자산";
       try {
-        // 휴지통 저장 먼저 → 성공하면 원본 삭제
-        await api.addTrash({ item_data: item, table_name:"assets", deletedat:nowISO() });
+        // ① 휴지통 저장 먼저 (item 객체 그대로 전달 - API에서 jsonb 처리)
+        const trashResult = await api.addTrash({ item_data: item, table_name:"assets", deletedat:nowISO() });
+        if (!trashResult) throw new Error("휴지통 저장 실패");
+        // ② 휴지통 저장 성공 후 원본 삭제
         await api.deleteHW(item.id);
         addHistory("하드웨어 삭제","hardware",item.id,name,
           `선택삭제-휴지통 / 지점:${item.clinic||"-"} / 팀:${item.team||"-"} / 사용자:${item.username||"-"}`,
           JSON.stringify(item),"");
         ok++;
-      } catch(e) { console.error(e); alert(`오류(${name}): ${e.message}`); }
+      } catch(e) { console.error("선택삭제 오류:", e); alert(`오류(${name}): ${e.message}`); }
     }
     setSelectedIds(new Set());
     const [fresh, newTrash] = await Promise.all([api.getHW(), api.getTrash()]);
     setHw(Array.isArray(fresh)?fresh:[]);
     setTrash(Array.isArray(newTrash)?newTrash:[]);
-    if(ok>0) alert(`${ok}건 휴지통으로 이동했습니다.`);
+    if(ok>0) alert(`${ok}건이 휴지통으로 이동됐습니다.`);
   };
 
   const save = () => {
@@ -957,19 +974,20 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
     for (const item of items) {
       const name = item.name||"소프트웨어";
       try {
-        await api.addTrash({ item_data: item, table_name:"software", deletedat:nowISO() });
+        const trashResult = await api.addTrash({ item_data: item, table_name:"software", deletedat:nowISO() });
+        if (!trashResult) throw new Error("휴지통 저장 실패");
         await api.deleteSW(item.id);
         addHistory("소프트웨어 삭제","software",item.id,name,
           `선택삭제-휴지통 / 벤더:${item.vendor||"-"} / 담당:${item.assignedto||"-"} / 지점:${item.clinic||"-"}`,
           JSON.stringify(item),"");
         ok++;
-      } catch(e) { console.error(e); alert(`오류(${name}): ${e.message}`); }
+      } catch(e) { console.error("선택삭제 오류:", e); alert(`오류(${name}): ${e.message}`); }
     }
     setSelectedIds(new Set());
     const [fresh, newTrash] = await Promise.all([api.getSW(), api.getTrash()]);
     setSw(Array.isArray(fresh)?fresh:[]);
     setTrash(Array.isArray(newTrash)?newTrash:[]);
-    if(ok>0) alert(`${ok}건 휴지통으로 이동했습니다.`);
+    if(ok>0) alert(`${ok}건이 휴지통으로 이동됐습니다.`);
   };
 
   const save = () => {
