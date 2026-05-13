@@ -1635,24 +1635,18 @@ const QR_DEFAULT_FIELDS = new Set([
 
 function QRScanSection({ hw, onClose, currentUser }) {
   const qrColKey = `qr_cols_${currentUser?.loginid||"default"}`;
-  const [jsQRReady,   setJsQRReady]   = useState(!!window.jsQR);
-  const [scanning,    setScanning]    = useState(false);
-  const [scanned,     setScanned]     = useState(null);
-  const [asset,       setAsset]       = useState(null);
-  const [notFound,    setNotFound]    = useState(false);
-  const [camError,    setCamError]    = useState("");
-  const [showColMenu, setShowColMenu] = useState(false);
+  const [jsQRReady,     setJsQRReady]     = useState(!!window.jsQR);
+  const [scanning,      setScanning]      = useState(false);
+  const [scanned,       setScanned]       = useState(null);
+  const [asset,         setAsset]         = useState(null);
+  const [notFound,      setNotFound]      = useState(false);
+  const [camError,      setCamError]      = useState("");
+  const [showColPanel,  setShowColPanel]  = useState(false); // 인라인 패널
   const [visibleQRCols, setVisibleQRCols] = useState(() => loadColPref(qrColKey, QR_DEFAULT_FIELDS));
-  const videoRef   = useRef(null);
-  const canvasRef  = useRef(null);
-  const streamRef  = useRef(null);
-  const animRef    = useRef(null);
-  const colMenuRef = useRef(null);
-
-  useEffect(() => {
-    const h = (e) => { if (colMenuRef.current && !colMenuRef.current.contains(e.target)) setShowColMenu(false); };
-    document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h);
-  }, []);
+  const videoRef  = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+  const animRef   = useRef(null);
 
   const toggleQRCol = (key) => setVisibleQRCols(prev => {
     const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key);
@@ -1672,7 +1666,7 @@ function QRScanSection({ hw, onClose, currentUser }) {
   useEffect(() => () => stopScan(), []);
 
   const startScan = async () => {
-    setCamError(""); setScanned(null); setAsset(null); setNotFound(false);
+    setCamError(""); setScanned(null); setAsset(null); setNotFound(false); setShowColPanel(false);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }
@@ -1691,7 +1685,7 @@ function QRScanSection({ hw, onClose, currentUser }) {
           if (code?.data) {
             const text = code.data.trim();
             setScanned(text);
-            const found = hw.find(h => (h.imedcode || "").trim().toUpperCase() === text.toUpperCase());
+            const found = hw.find(h => (h.imedcode||"").trim().toUpperCase() === text.toUpperCase());
             setAsset(found || null);
             setNotFound(!found);
             stopScan(); return;
@@ -1703,9 +1697,8 @@ function QRScanSection({ hw, onClose, currentUser }) {
     } catch (err) { setCamError("카메라 접근 오류: " + err.message); }
   };
 
-  const reset = () => { setScanned(null); setAsset(null); setNotFound(false); setCamError(""); };
+  const reset = () => { setScanned(null); setAsset(null); setNotFound(false); setCamError(""); setShowColPanel(false); };
 
-  // 자산 필드 값 포맷
   const formatVal = (key, val) => {
     if (!val && val !== 0) return null;
     if (key === "assetstatus") return ASSET_STATUS[val] || val;
@@ -1714,114 +1707,98 @@ function QRScanSection({ hw, onClose, currentUser }) {
     return String(val);
   };
 
+  // 컬럼 선택 인라인 패널 (드롭다운 아님 → 잘림 없음)
+  const ColPanel = () => (
+    <div style={{ background:"#f8fafc", border:"1px solid #e2e8f0", borderRadius:14, padding:14, marginBottom:12 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+        <span style={{ fontSize:13, fontWeight:700, color:"#334155" }}>🔧 표시 항목 선택</span>
+        <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+          <button onClick={()=>toggleQRAll(true)}  style={{ fontSize:12, color:"#0f6e56", border:"none", background:"none", cursor:"pointer", fontWeight:600 }}>전체</button>
+          <button onClick={()=>toggleQRAll(false)} style={{ fontSize:12, color:"#cf1322", border:"none", background:"none", cursor:"pointer", fontWeight:600 }}>초기화</button>
+          <button onClick={()=>setShowColPanel(false)} style={{ fontSize:18, color:"#94a3b8", border:"none", background:"none", cursor:"pointer", lineHeight:1 }}>×</button>
+        </div>
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:4 }}>
+        {QR_ALL_FIELDS.map(f => (
+          <label key={f.key} style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 6px", borderRadius:8, cursor:"pointer", fontSize:12,
+            background: visibleQRCols.has(f.key) ? "#e8f5e9" : "#fff",
+            border: `1px solid ${visibleQRCols.has(f.key) ? "#a7d7a8" : "#e2e8f0"}`,
+            color: visibleQRCols.has(f.key) ? "#0f6e56" : "#64748b",
+            fontWeight: visibleQRCols.has(f.key) ? 600 : 400 }}>
+            <input type="checkbox" checked={visibleQRCols.has(f.key)} onChange={()=>toggleQRCol(f.key)}
+              style={{ accentColor:"#0f6e56", width:12, height:12, flexShrink:0 }}/>
+            <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{f.label}</span>
+          </label>
+        ))}
+      </div>
+      <div style={{ marginTop:8, fontSize:11, color:"#94a3b8" }}>💾 계정별 자동 저장됩니다</div>
+    </div>
+  );
+
   return (
-    <div style={{ display:"flex", flexDirection:"column", height: onClose ? "auto" : "calc(100vh - 120px)", minHeight:0 }}>
+    <div>
       <QRScannerLoader onLoad={() => setJsQRReady(true)} />
 
-      {/* 헤더 */}
-      {!onClose && (
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12, flexShrink:0 }}>
-          <h2 style={{ fontSize:22, fontWeight:700, margin:0 }}>📷 QR 스캔</h2>
-          {/* 컬럼 설정 버튼 — 스캔 결과가 있을 때만 */}
-          {asset && (
-            <div ref={colMenuRef} style={{ position:"relative" }}>
-              <Btn onClick={()=>setShowColMenu(v=>!v)} style={{ fontSize:12 }}>
-                🔧 표시항목 {visibleQRCols.size}/{QR_ALL_FIELDS.length}
-              </Btn>
-              {showColMenu && (
-                <div style={{ position:"absolute", top:"calc(100% + 6px)", right:0, background:"#fff", border:"1px solid #e2e8f0",
-                  borderRadius:14, boxShadow:"0 8px 32px rgba(0,0,0,0.12)", zIndex:500, padding:14, width:260 }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8, paddingBottom:8, borderBottom:"1px solid #f0f0f0" }}>
-                    <span style={{ fontSize:12, fontWeight:700 }}>표시 항목 선택</span>
-                    <div style={{ display:"flex", gap:8 }}>
-                      <button onClick={()=>toggleQRAll(true)}  style={{ fontSize:11, color:"#0f6e56", border:"none", background:"none", cursor:"pointer", fontWeight:600 }}>전체</button>
-                      <button onClick={()=>toggleQRAll(false)} style={{ fontSize:11, color:"#cf1322", border:"none", background:"none", cursor:"pointer", fontWeight:600 }}>초기화</button>
-                    </div>
-                  </div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:2, maxHeight:280, overflowY:"auto" }}>
-                    {QR_ALL_FIELDS.map(f => (
-                      <label key={f.key} style={{ display:"flex", alignItems:"center", gap:5, padding:"4px", borderRadius:6, cursor:"pointer", fontSize:12,
-                        background: visibleQRCols.has(f.key)?"#e8f5e9":"transparent",
-                        color: visibleQRCols.has(f.key)?"#0f6e56":"#64748b",
-                        fontWeight: visibleQRCols.has(f.key)?600:400 }}>
-                        <input type="checkbox" checked={visibleQRCols.has(f.key)} onChange={()=>toggleQRCol(f.key)}
-                          style={{ accentColor:"#0f6e56", width:12, height:12 }}/>
-                        {f.label}
-                      </label>
-                    ))}
-                  </div>
-                  <div style={{ marginTop:8, paddingTop:8, borderTop:"1px solid #f0f0f0", fontSize:11, color:"#94a3b8" }}>💾 계정별 자동 저장됩니다</div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 스캔 전 안내 + 카메라 + 버튼 — 스크롤 없이 한 화면에 */}
+      {/* ── 스캔 전 화면 ── */}
       {!scanned && (
-        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:10, flex:1, minHeight:0 }}>
-          {/* 안내 박스 (간결하게) */}
-          <div style={{ background:"#e8f5e9", borderRadius:12, padding:"10px 14px", border:"1px solid #a7d7a8", width:"100%", flexShrink:0 }}>
+        <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+          {/* 안내 박스 */}
+          <div style={{ background:"#e8f5e9", borderRadius:12, padding:"10px 14px", border:"1px solid #a7d7a8" }}>
             <div style={{ fontSize:12, fontWeight:700, color:"#0f6e56", marginBottom:4 }}>📋 사용 방법</div>
-            <div style={{ fontSize:11, color:"#334155", lineHeight:1.7 }}>
-              1. 자산 스티커의 QR코드를 찾으세요&nbsp;&nbsp;
+            <div style={{ fontSize:11, color:"#334155", lineHeight:1.8 }}>
+              1. 자산 스티커의 QR코드를 찾으세요<br/>
               2. QR코드 값 = <b>아이메드 코드</b> (예: GCSF-PC-039)<br/>
-              3. 스캔 시작 버튼을 누르고 카메라를 QR코드에 갖다 대세요&nbsp;&nbsp;
+              3. 스캔 시작 버튼을 누르고 카메라를 QR코드에 갖다 대세요<br/>
               4. 자동 인식 후 자산 상세정보가 표시됩니다
             </div>
           </div>
 
-          {/* 카메라 영역 — 화면 높이에 맞게 유동 */}
+          {/* 카메라 영역 */}
           <div style={{ position:"relative", borderRadius:16, overflow:"hidden", background:"#000",
-            width:"100%", maxWidth:360,
-            height: onClose ? 260 : "min(55vw, 280px)",
-            flexShrink:0 }}>
+            width:"100%", height:260 }}>
             <video ref={videoRef} playsInline muted
               style={{ width:"100%", height:"100%", objectFit:"cover", display:scanning?"block":"none" }} />
             {!scanning && (
               <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:8 }}>
-                <span style={{ fontSize:48 }}>📷</span>
-                <span style={{ color:"#fff", fontSize:12 }}>카메라가 여기에 표시됩니다</span>
+                <span style={{ fontSize:52 }}>📷</span>
+                <span style={{ color:"#fff", fontSize:13 }}>카메라가 여기에 표시됩니다</span>
               </div>
             )}
             {scanning && (
               <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
-                <div style={{ width:"60%", height:"60%", border:"3px solid #0f6e56", borderRadius:12, boxShadow:"0 0 0 9999px rgba(0,0,0,0.35)" }} />
+                <div style={{ width:"55%", height:"55%", border:"3px solid #0f6e56", borderRadius:12, boxShadow:"0 0 0 9999px rgba(0,0,0,0.4)" }} />
               </div>
             )}
           </div>
           <canvas ref={canvasRef} style={{ display:"none" }} />
 
           {camError && (
-            <div style={{ color:"#cf1322", fontSize:12, padding:"8px 14px", background:"#fff1f0", borderRadius:10, width:"100%", flexShrink:0 }}>
-              {camError}
-            </div>
+            <div style={{ color:"#cf1322", fontSize:12, padding:"8px 14px", background:"#fff1f0", borderRadius:10 }}>{camError}</div>
           )}
 
-          {/* 스캔 시작/중지 버튼 — 항상 보이도록 flexShrink:0 */}
-          <div style={{ flexShrink:0, width:"100%", maxWidth:360 }}>
-            {!scanning
-              ? <Btn onClick={startScan} variant="primary" disabled={!jsQRReady}
-                  style={{ fontSize:15, padding:"13px 0", borderRadius:14, width:"100%", textAlign:"center" }}>
-                  {jsQRReady ? "📷 스캔 시작" : "라이브러리 로딩 중..."}
-                </Btn>
-              : <Btn onClick={stopScan} variant="danger"
-                  style={{ fontSize:15, padding:"13px 0", borderRadius:14, width:"100%", textAlign:"center" }}>
+          {/* 버튼 */}
+          {!scanning
+            ? <Btn onClick={startScan} variant="primary" disabled={!jsQRReady}
+                style={{ fontSize:15, padding:"14px 0", borderRadius:14, width:"100%", textAlign:"center" }}>
+                {jsQRReady ? "📷 스캔 시작" : "라이브러리 로딩 중..."}
+              </Btn>
+            : <>
+                <Btn onClick={stopScan} variant="danger"
+                  style={{ fontSize:15, padding:"14px 0", borderRadius:14, width:"100%", textAlign:"center" }}>
                   ⏹ 중지
                 </Btn>
-            }
-            {scanning && <p style={{ color:"#64748b", fontSize:11, marginTop:8, textAlign:"center" }}>QR코드를 카메라 중앙 박스에 맞춰주세요</p>}
-          </div>
+                <p style={{ color:"#64748b", fontSize:11, textAlign:"center", margin:0 }}>QR코드를 카메라 중앙 박스에 맞춰주세요</p>
+              </>
+          }
         </div>
       )}
 
-      {/* 스캔 결과 */}
+      {/* ── 스캔 결과 화면 ── */}
       {scanned && (
-        <div style={{ overflowY:"auto", flex:1, minHeight:0 }}>
-          {/* 인식된 코드 + 다시스캔 */}
-          <div style={{ background:"#f8fafc", borderRadius:12, padding:"12px 16px", marginBottom:12,
-            display:"flex", justifyContent:"space-between", alignItems:"center", flexShrink:0 }}>
+        <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+          {/* 인식된 코드 바 */}
+          <div style={{ background:"#f8fafc", borderRadius:12, padding:"12px 16px",
+            display:"flex", justifyContent:"space-between", alignItems:"center" }}>
             <div>
               <div style={{ fontSize:11, color:"#94a3b8", marginBottom:2 }}>인식된 코드</div>
               <div style={{ fontSize:16, fontWeight:700, color:"#0f6e56" }}>{scanned}</div>
@@ -1831,55 +1808,28 @@ function QRScanSection({ hw, onClose, currentUser }) {
 
           {/* 자산 정보 카드 */}
           {asset ? (
-            <div style={{ background:"#fff", borderRadius:18, border:"2px solid #0f6e56", padding:18 }}>
-              {/* 헤더: 타이틀 + 상태배지 + 컬럼설정(모달 내부용) */}
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14, flexWrap:"wrap", gap:8 }}>
-                <h3 style={{ margin:0, fontSize:16, color:"#0f6e56" }}>✅ 자산 정보</h3>
+            <div style={{ background:"#fff", borderRadius:18, border:"2px solid #0f6e56", padding:16 }}>
+              {/* 카드 헤더: 타이틀 + 상태배지 + 항목설정 버튼 */}
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12, flexWrap:"wrap", gap:8 }}>
+                <h3 style={{ margin:0, fontSize:15, color:"#0f6e56" }}>✅ 자산 정보</h3>
                 <div style={{ display:"flex", gap:8, alignItems:"center" }}>
                   {(() => { const s=STATUS_BADGE[asset.assetstatus]||{bg:"#f1f5f9",color:"#64748b"};
-                    return <span style={{ background:s.bg, color:s.color, padding:"4px 12px", borderRadius:20, fontSize:11, fontWeight:700 }}>{ASSET_STATUS[asset.assetstatus]||asset.assetstatus}</span>; })()}
-                  {/* 컬럼 설정 버튼 (모달 내부 / 모바일 공용) */}
-                  <div ref={onClose ? colMenuRef : undefined} style={{ position:"relative" }}>
-                    <Btn onClick={()=>setShowColMenu(v=>!v)} style={{ fontSize:11, padding:"5px 8px" }}>
-                      🔧 항목 {visibleQRCols.size}/{QR_ALL_FIELDS.length}
-                    </Btn>
-                    {showColMenu && (
-                      <div style={{ position:"absolute", top:"calc(100% + 6px)", right:0, background:"#fff",
-                        border:"1px solid #e2e8f0", borderRadius:14, boxShadow:"0 8px 32px rgba(0,0,0,0.15)",
-                        zIndex:600, padding:14, width:250 }}>
-                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8, paddingBottom:8, borderBottom:"1px solid #f0f0f0" }}>
-                          <span style={{ fontSize:12, fontWeight:700 }}>표시 항목 선택</span>
-                          <div style={{ display:"flex", gap:8 }}>
-                            <button onClick={()=>toggleQRAll(true)}  style={{ fontSize:11, color:"#0f6e56", border:"none", background:"none", cursor:"pointer", fontWeight:600 }}>전체</button>
-                            <button onClick={()=>toggleQRAll(false)} style={{ fontSize:11, color:"#cf1322", border:"none", background:"none", cursor:"pointer", fontWeight:600 }}>초기화</button>
-                          </div>
-                        </div>
-                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:2, maxHeight:260, overflowY:"auto" }}>
-                          {QR_ALL_FIELDS.map(f => (
-                            <label key={f.key} style={{ display:"flex", alignItems:"center", gap:5, padding:"4px", borderRadius:6, cursor:"pointer", fontSize:11,
-                              background: visibleQRCols.has(f.key)?"#e8f5e9":"transparent",
-                              color: visibleQRCols.has(f.key)?"#0f6e56":"#64748b",
-                              fontWeight: visibleQRCols.has(f.key)?600:400 }}>
-                              <input type="checkbox" checked={visibleQRCols.has(f.key)} onChange={()=>toggleQRCol(f.key)}
-                                style={{ accentColor:"#0f6e56", width:12, height:12 }}/>
-                              {f.label}
-                            </label>
-                          ))}
-                        </div>
-                        <div style={{ marginTop:8, paddingTop:8, borderTop:"1px solid #f0f0f0", fontSize:11, color:"#94a3b8" }}>💾 계정별 자동 저장</div>
-                      </div>
-                    )}
-                  </div>
+                    return <span style={{ background:s.bg, color:s.color, padding:"3px 10px", borderRadius:20, fontSize:11, fontWeight:700 }}>{ASSET_STATUS[asset.assetstatus]||asset.assetstatus}</span>; })()}
+                  <Btn onClick={()=>setShowColPanel(v=>!v)} style={{ fontSize:11, padding:"4px 10px" }}>
+                    {showColPanel ? "✕ 닫기" : `🔧 항목 ${visibleQRCols.size}/${QR_ALL_FIELDS.length}`}
+                  </Btn>
                 </div>
               </div>
 
-              {/* 자산 필드 그리드 — 선택된 컬럼만, 값 있는 항목만 */}
+              {/* 컬럼 선택 인라인 패널 — 잘림 없이 카드 안에서 확장 */}
+              {showColPanel && <ColPanel />}
+
+              {/* 자산 필드 그리드 */}
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
                 {QR_ALL_FIELDS
                   .filter(f => visibleQRCols.has(f.key))
                   .map(f => {
-                    const raw = asset[f.key];
-                    const val = formatVal(f.key, raw);
+                    const val = formatVal(f.key, asset[f.key]);
                     if (!val) return null;
                     const isWide = f.key === "notes" || f.key === "purchaseinfo";
                     return (
