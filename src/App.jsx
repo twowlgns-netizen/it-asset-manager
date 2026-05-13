@@ -141,7 +141,7 @@ const api = {
   addHistory: (d) => fetch(`${BASE_URL}/history`, { method:"POST", headers:H, body:JSON.stringify(d) }).then(safeJson),
   // 휴지통
   getTrash:    () => fetch(`${BASE_URL}/trash?select=*&order=created_at.desc`, { headers:H }).then(safeJson),
-  addTrash:    (d) => fetch(`${BASE_URL}/trash`, { method:"POST", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify({...d, item_data: typeof d.item_data === "string" ? d.item_data : JSON.stringify(d.item_data)}) }).then(safeJson),
+  addTrash:    (d) => fetch(`${BASE_URL}/trash`, { method:"POST", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify({...d, item_data: JSON.stringify(typeof d.item_data === "string" ? JSON.parse(d.item_data) : d.item_data)}) }).then(safeJson),
   deleteTrash: (id) => fetch(`${BASE_URL}/trash?id=eq.${id}`, { method:"DELETE", headers:H }).then(safeJson),
 };
 
@@ -154,15 +154,13 @@ export default function App() {
     style.textContent = `
       html, body { overflow: hidden; height: 100%; margin: 0; padding: 0; box-sizing: border-box; }
       .hw-no-sb::-webkit-scrollbar { display: none; }
-      /* 메인 우측 세로 스크롤바 */
-      .main-scroll-area::-webkit-scrollbar { width: 8px; }
-      .main-scroll-area::-webkit-scrollbar-track { background: #f1f5f9; }
-      .main-scroll-area::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
-      .main-scroll-area::-webkit-scrollbar-thumb:hover { background: #64748b; }
-      /* 기타 스크롤바는 얇게 */
-      ::-webkit-scrollbar { width: 4px; height: 4px; }
-      ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
+      /* 페이지 스크롤바 */
+      .page-scroll-area::-webkit-scrollbar { width: 8px; }
+      .page-scroll-area::-webkit-scrollbar-track { background: #f1f5f9; }
+      .page-scroll-area::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
+      .page-scroll-area::-webkit-scrollbar-thumb:hover { background: #64748b; }
+      /* 기타 스크롤바 숨김 */
+      ::-webkit-scrollbar { width: 0; height: 0; }
     `;
     document.head.appendChild(style);
     return () => document.head.removeChild(style);
@@ -267,14 +265,14 @@ export default function App() {
         </div>
       )}
 
-      <div className="main-scroll-area" style={{ flex:1, overflowY:"scroll", overflowX:"hidden", minWidth:0 }}>
+      <div style={{ flex:1, display:"flex", flexDirection:"column", overflowY:"hidden", overflowX:"hidden", minWidth:0 }}>
         {isMobile && (
           <div style={{ background:"#fff", padding:"14px 18px", borderBottom:"1px solid #e2e8f0", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, zIndex:10 }}>
             <span onClick={()=>{ setView("dashboard"); window.location.reload(); }} style={{ fontWeight:800, color:"#0f6e56", fontSize:16, cursor:"pointer", userSelect:"none" }}>IT Asset Manager</span>
             <Btn onClick={handleLogout} style={{ fontSize:11, padding:"5px 10px" }}>로그아웃</Btn>
           </div>
         )}
-        <main style={{ padding:isMobile?"16px":"32px", paddingBottom:40 }}>
+        <main className="page-scroll-area" style={{ padding:isMobile?"16px":"32px", paddingBottom:40, flex:1, overflowY:"auto", overflowX:"hidden" }}>
           {view==="dashboard"  && <DashboardSection  hw={hw} sw={sw} history={history} isMobile={isMobile} />}
           {view==="hardware"   && <HardwareSection   data={hw} setHw={setHw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} />}
           {view==="software"   && <SoftwareSection   data={sw} setSw={setSw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} />}
@@ -453,29 +451,24 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
     if (selectedIds.size === 0) return alert("삭제할 항목을 선택하세요.");
     if (!window.confirm(`선택한 ${selectedIds.size}건을 휴지통으로 이동하시겠습니까?`)) return;
     const items = data.filter(h => selectedIds.has(h.id));
-    let successCount = 0;
+    let ok = 0;
     for (const item of items) {
       const name = item.gccode||item.modelname||"자산";
       try {
-        // ① 휴지통에 먼저 저장 (성공해야 원본 삭제)
+        // 휴지통 저장 먼저 → 성공하면 원본 삭제
         await api.addTrash({ item_data: item, table_name:"assets", deletedat:nowISO() });
-        // ② 원본 삭제
         await api.deleteHW(item.id);
         addHistory("하드웨어 삭제","hardware",item.id,name,
           `선택삭제-휴지통 / 지점:${item.clinic||"-"} / 팀:${item.team||"-"} / 사용자:${item.username||"-"}`,
           JSON.stringify(item),"");
-        successCount++;
-      } catch(e) {
-        console.error(e);
-        alert(`삭제 오류 (${name}): ${e.message}
-해당 항목은 건너뜁니다.`);
-      }
+        ok++;
+      } catch(e) { console.error(e); alert(`오류(${name}): ${e.message}`); }
     }
     setSelectedIds(new Set());
     const [fresh, newTrash] = await Promise.all([api.getHW(), api.getTrash()]);
     setHw(Array.isArray(fresh)?fresh:[]);
     setTrash(Array.isArray(newTrash)?newTrash:[]);
-    if (successCount > 0) alert(`${successCount}건이 휴지통으로 이동되었습니다.`);
+    if(ok>0) alert(`${ok}건 휴지통으로 이동했습니다.`);
   };
 
   const save = () => {
@@ -960,29 +953,23 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
     if (selectedIds.size === 0) return alert("삭제할 항목을 선택하세요.");
     if (!window.confirm(`선택한 ${selectedIds.size}건을 휴지통으로 이동하시겠습니까?`)) return;
     const items = data.filter(s => selectedIds.has(s.id));
-    let successCount = 0;
+    let ok = 0;
     for (const item of items) {
       const name = item.name||"소프트웨어";
       try {
-        // ① 휴지통에 먼저 저장
         await api.addTrash({ item_data: item, table_name:"software", deletedat:nowISO() });
-        // ② 원본 삭제
         await api.deleteSW(item.id);
         addHistory("소프트웨어 삭제","software",item.id,name,
           `선택삭제-휴지통 / 벤더:${item.vendor||"-"} / 담당:${item.assignedto||"-"} / 지점:${item.clinic||"-"}`,
           JSON.stringify(item),"");
-        successCount++;
-      } catch(e) {
-        console.error(e);
-        alert(`삭제 오류 (${name}): ${e.message}
-해당 항목은 건너뜁니다.`);
-      }
+        ok++;
+      } catch(e) { console.error(e); alert(`오류(${name}): ${e.message}`); }
     }
     setSelectedIds(new Set());
     const [fresh, newTrash] = await Promise.all([api.getSW(), api.getTrash()]);
     setSw(Array.isArray(fresh)?fresh:[]);
     setTrash(Array.isArray(newTrash)?newTrash:[]);
-    if (successCount > 0) alert(`${successCount}건이 휴지통으로 이동되었습니다.`);
+    if(ok>0) alert(`${ok}건 휴지통으로 이동했습니다.`);
   };
 
   const save = () => {
