@@ -298,7 +298,7 @@ export default function App() {
             <Btn onClick={handleLogout} style={{ fontSize:11, padding:"5px 10px" }}>로그아웃</Btn>
           </div>
         )}
-        <main style={{ padding:isMobile?"16px":"32px", paddingBottom:40 }}>
+        <main style={{ padding:isMobile?"16px":"32px", paddingBottom:isMobile?96:40 }}>
           {view==="dashboard"  && <DashboardSection  hw={hw} sw={sw} history={history} historyCount={historyCount} isMobile={isMobile} />}
           {view==="hardware"   && <HardwareSection   data={hw} setHw={setHw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} setView={setView} />}
           {view==="software"   && <SoftwareSection   data={sw} setSw={setSw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} />}
@@ -1665,13 +1665,45 @@ function QRScanSection({ hw, onClose, currentUser }) {
 
   const startScan = async () => {
     setCamError(""); setScanned(null); setAsset(null); setNotFound(false);
+
+    // iOS Safari 호환: width/height constraint 없이 시도 → 실패 시 기본값으로 재시도
+    const tryGetStream = async () => {
+      // 1차 시도: 후면 카메라 (exact 대신 ideal 사용 — iOS에서 exact는 실패 가능)
+      try {
+        return await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } }
+        });
+      } catch {
+        // 2차 시도: constraint 없이 기본 카메라
+        return await navigator.mediaDevices.getUserMedia({ video: true });
+      }
+    };
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }
-      });
+      // iOS는 navigator.mediaDevices 자체가 없는 경우도 있음 (비HTTPS 환경)
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setCamError("이 브라우저는 카메라를 지원하지 않습니다.\niOS는 Safari 브라우저에서만 카메라 접근이 가능합니다.\n또한 반드시 HTTPS(보안) 연결이 필요합니다.");
+        return;
+      }
+
+      const stream = await tryGetStream();
       streamRef.current = stream;
-      if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        // iOS Safari: play()는 반드시 await 처리, autoplay 제한 우회
+        videoRef.current.setAttribute("playsinline", "true");
+        videoRef.current.setAttribute("muted", "true");
+        try {
+          await videoRef.current.play();
+        } catch (playErr) {
+          // 일부 iOS 버전에서 play() 실패 시 재시도
+          await new Promise(r => setTimeout(r, 300));
+          await videoRef.current.play();
+        }
+      }
       setScanning(true);
+
       const tick = () => {
         const v = videoRef.current; const c = canvasRef.current;
         if (!v || !c || v.readyState < 2) { animRef.current = requestAnimationFrame(tick); return; }
@@ -1692,7 +1724,25 @@ function QRScanSection({ hw, onClose, currentUser }) {
         animRef.current = requestAnimationFrame(tick);
       };
       animRef.current = requestAnimationFrame(tick);
-    } catch (err) { setCamError("카메라 접근 오류: " + err.message); }
+
+    } catch (err) {
+      // iOS/Android별 친절한 오류 안내
+      let msg = "카메라 접근 오류";
+      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+        msg = "📵 카메라 권한이 거부됐습니다.\n\n【아이폰】 설정 → Safari → 카메라 → '허용'으로 변경 후 페이지를 새로고침 하세요.\n【안드로이드】 설정 → 앱 → 브라우저 → 권한 → 카메라 허용";
+      } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+        msg = "카메라를 찾을 수 없습니다. 기기에 카메라가 있는지 확인하세요.";
+      } else if (err.name === "NotReadableError" || err.name === "TrackStartError") {
+        msg = "카메라가 다른 앱에서 사용 중입니다. 다른 앱을 닫고 다시 시도하세요.";
+      } else if (err.name === "OverconstrainedError") {
+        msg = "카메라 설정 오류입니다. 다시 시도해 주세요.";
+      } else if (err.name === "TypeError") {
+        msg = "HTTPS 연결이 필요합니다. 보안 연결(https://)로 접속해 주세요.\n아이폰은 반드시 Safari 브라우저를 사용해 주세요.";
+      } else {
+        msg = `카메라 오류: ${err.message}`;
+      }
+      setCamError(msg);
+    }
   };
 
   const reset = () => { setScanned(null); setAsset(null); setNotFound(false); setCamError(""); };
@@ -1707,7 +1757,7 @@ function QRScanSection({ hw, onClose, currentUser }) {
   };
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", height: onClose ? "auto" : "calc(100vh - 120px)", minHeight:0 }}>
+    <div style={{ display:"flex", flexDirection:"column", minHeight:0 }}>
       <QRScannerLoader onLoad={() => setJsQRReady(true)} />
 
       {/* 헤더 */}
@@ -1736,7 +1786,7 @@ function QRScanSection({ hw, onClose, currentUser }) {
             width:"100%", maxWidth:360,
             height: onClose ? 260 : "min(55vw, 280px)",
             flexShrink:0 }}>
-            <video ref={videoRef} playsInline muted
+            <video ref={videoRef} playsInline muted autoPlay
               style={{ width:"100%", height:"100%", objectFit:"cover", display:scanning?"block":"none" }} />
             {!scanning && (
               <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:8 }}>
@@ -1753,7 +1803,7 @@ function QRScanSection({ hw, onClose, currentUser }) {
           <canvas ref={canvasRef} style={{ display:"none" }} />
 
           {camError && (
-            <div style={{ color:"#cf1322", fontSize:12, padding:"8px 14px", background:"#fff1f0", borderRadius:10, width:"100%", flexShrink:0 }}>
+            <div style={{ color:"#cf1322", fontSize:12, padding:"12px 14px", background:"#fff1f0", borderRadius:10, width:"100%", flexShrink:0, whiteSpace:"pre-line", lineHeight:1.7 }}>
               {camError}
             </div>
           )}
@@ -1777,7 +1827,7 @@ function QRScanSection({ hw, onClose, currentUser }) {
 
       {/* 스캔 결과 */}
       {scanned && (
-        <div style={{ overflowY:"auto", flex:1, minHeight:0 }}>
+        <div style={{ paddingBottom:8 }}>
           {/* 인식된 코드 + 다시스캔 */}
           <div style={{ background:"#f8fafc", borderRadius:12, padding:"12px 16px", marginBottom:12,
             display:"flex", justifyContent:"space-between", alignItems:"center", flexShrink:0 }}>
