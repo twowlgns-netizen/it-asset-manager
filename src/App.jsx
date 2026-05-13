@@ -181,9 +181,9 @@ export default function App() {
     const clientInfo = getClientInfo();
     const detail = `IP: ${ip} / 환경: ${clientInfo}`;
     api.addHistory({
-      ts: nowISO(), action:"로그인", aType:"user", aId: user.id||"", aName: user.name,
+      ts: nowISO(), action:"로그인", atype:"user", aid: user.id||"", aname: user.name,
       detail, before:"", after:"",
-      userName: user.name, userRole: user.role, clinic: user.clinic||""
+      username: user.name, userrole: user.role, clinic: user.clinic||""
     }).catch(console.error);
   };
 
@@ -194,9 +194,9 @@ export default function App() {
       const clientInfo = getClientInfo();
       const detail = `IP: ${ip} / 환경: ${clientInfo}`;
       await api.addHistory({
-        ts: nowISO(), action:"로그아웃", aType:"user", aId: currentUser.id||"", aName: currentUser.name,
+        ts: nowISO(), action:"로그아웃", atype:"user", aid: currentUser.id||"", aname: currentUser.name,
         detail, before:"", after:"",
-        userName: currentUser.name, userRole: currentUser.role, clinic: currentUser.clinic||""
+        username: currentUser.name, userrole: currentUser.role, clinic: currentUser.clinic||""
       }).catch(console.error);
     }
     setIsLoggedIn(false);
@@ -222,7 +222,7 @@ export default function App() {
 
   const addHistory = useCallback((action, aType, aId, aName, detail, before="", after="") => {
     if (!currentUser) return;
-    api.addHistory({ ts: nowISO(), action, atype: aType, aid: aId, aname: aName, detail, before_data: before, after_data: after, username: currentUser.name, userrole: currentUser.role, clinic: currentUser.clinic || "" })
+    api.addHistory({ ts: nowISO(), action, atype: aType, aid: aId, aname: aName, detail, before, after, username: currentUser.name, userrole: currentUser.role, clinic: currentUser.clinic || "" })
       .then(() => api.getHistory().then(d => { const l=Array.isArray(d)?d:[]; setHistory(l.sort((a,b)=>new Date(b.ts)-new Date(a.ts))); }))
       .catch(console.error);
   }, [currentUser]);
@@ -1442,7 +1442,7 @@ function HistorySection({ history }) {
           { label:"대상",    minWidth:130, key:"aName" },
           { label:"상세",    minWidth:240, key:"detail" },
           { label:"지점",    minWidth:120, render:h=>CLINICS[h.clinic]||h.clinic||"-" },
-          { label:"변경내용",minWidth:90,  noClip:true, render:h=>(h.before_data||h.after_data)&&(
+          { label:"변경내용",minWidth:90,  noClip:true, render:h=>(h.before||h.after)&&(
             <Btn onClick={()=>setShowDetail(h)} style={{fontSize:11,padding:"4px 8px"}}>보기</Btn>
           )},
         ]}
@@ -1451,7 +1451,7 @@ function HistorySection({ history }) {
       {showDetail && (
         <Modal title="변경 내용 상세" onClose={()=>setShowDetail(null)}>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            {["before_data","after_data"].map(k=>(
+            {["before","after"].map(k=>(
               <div key={k}>
                 <div style={{fontSize:12,fontWeight:700,color:k==="before"?"#cf1322":"#0f6e56",marginBottom:6}}>
                   {k==="before"?"변경 전":"변경 후"}
