@@ -1714,47 +1714,6 @@ function QRScanSection({ hw, onClose, currentUser }) {
       {!onClose && (
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12, flexShrink:0 }}>
           <h2 style={{ fontSize:22, fontWeight:700, margin:0 }}>📷 QR 스캔</h2>
-          {/* 컬럼 설정 버튼 — 스캔 결과가 있을 때만 */}
-          {asset && (
-            <div ref={colMenuRef} style={{ position:"relative" }}>
-              <Btn onClick={()=>setShowColMenu(v=>!v)} style={{ fontSize:12 }}>
-                🔧 표시항목 {visibleQRCols.size}/{QR_ALL_FIELDS.length}
-              </Btn>
-              {showColMenu && (
-                <div style={{
-                  position:"fixed",
-                  left:"50%", transform:"translateX(-50%)",
-                  top:80,
-                  background:"#fff", border:"1px solid #e2e8f0",
-                  borderRadius:14, boxShadow:"0 8px 32px rgba(0,0,0,0.12)",
-                  zIndex:9000, padding:14,
-                  width:"min(280px, 90vw)"
-                }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8, paddingBottom:8, borderBottom:"1px solid #f0f0f0" }}>
-                    <span style={{ fontSize:12, fontWeight:700 }}>표시 항목 선택</span>
-                    <div style={{ display:"flex", gap:8 }}>
-                      <button onClick={()=>toggleQRAll(true)}  style={{ fontSize:11, color:"#0f6e56", border:"none", background:"none", cursor:"pointer", fontWeight:600 }}>전체</button>
-                      <button onClick={()=>toggleQRAll(false)} style={{ fontSize:11, color:"#cf1322", border:"none", background:"none", cursor:"pointer", fontWeight:600 }}>초기화</button>
-                      <button onClick={()=>setShowColMenu(false)} style={{ fontSize:11, color:"#94a3b8", border:"none", background:"none", cursor:"pointer" }}>✕</button>
-                    </div>
-                  </div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:2, maxHeight:280, overflowY:"auto" }}>
-                    {QR_ALL_FIELDS.map(f => (
-                      <label key={f.key} style={{ display:"flex", alignItems:"center", gap:5, padding:"4px", borderRadius:6, cursor:"pointer", fontSize:12,
-                        background: visibleQRCols.has(f.key)?"#e8f5e9":"transparent",
-                        color: visibleQRCols.has(f.key)?"#0f6e56":"#64748b",
-                        fontWeight: visibleQRCols.has(f.key)?600:400 }}>
-                        <input type="checkbox" checked={visibleQRCols.has(f.key)} onChange={()=>toggleQRCol(f.key)}
-                          style={{ accentColor:"#0f6e56", width:12, height:12 }}/>
-                        {f.label}
-                      </label>
-                    ))}
-                  </div>
-                  <div style={{ marginTop:8, paddingTop:8, borderTop:"1px solid #f0f0f0", fontSize:11, color:"#94a3b8" }}>💾 계정별 자동 저장됩니다</div>
-                </div>
-              )}
-            </div>
-          )}
         </div>
       )}
 
@@ -1840,7 +1799,7 @@ function QRScanSection({ hw, onClose, currentUser }) {
                     return <span style={{ background:s.bg, color:s.color, padding:"4px 12px", borderRadius:20, fontSize:11, fontWeight:700 }}>{ASSET_STATUS[asset.assetstatus]||asset.assetstatus}</span>; })()}
                 </div>
                 {/* 컬럼 설정 버튼 — 드롭다운이 항상 화면 안쪽으로 열리도록 */}
-                <div ref={onClose ? colMenuRef : undefined} style={{ position:"relative" }}>
+                <div ref={colMenuRef} style={{ position:"relative" }}>
                   <Btn onClick={()=>setShowColMenu(v=>!v)} style={{ fontSize:11, padding:"5px 8px" }}>
                     🔧 항목 {visibleQRCols.size}/{QR_ALL_FIELDS.length}
                   </Btn>
