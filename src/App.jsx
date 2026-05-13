@@ -1827,15 +1827,14 @@ function QRScanSection({ hw, onClose, currentUser }) {
 
       {/* 스캔 결과 */}
       {scanned && (
-        <div style={{ paddingBottom:8 }}>
-          {/* 인식된 코드 + 다시스캔 */}
+        <div style={{ paddingBottom: 100 }}>
+          {/* 인식된 코드 */}
           <div style={{ background:"#f8fafc", borderRadius:12, padding:"12px 16px", marginBottom:12,
-            display:"flex", justifyContent:"space-between", alignItems:"center", flexShrink:0 }}>
+            display:"flex", justifyContent:"space-between", alignItems:"center" }}>
             <div>
               <div style={{ fontSize:11, color:"#94a3b8", marginBottom:2 }}>인식된 코드</div>
               <div style={{ fontSize:16, fontWeight:700, color:"#0f6e56", wordBreak:"break-all" }}>{scanned}</div>
             </div>
-            <Btn onClick={reset} style={{ fontSize:12, flexShrink:0, marginLeft:10 }}>🔄 다시 스캔</Btn>
           </div>
 
           {/* 자산 정보 카드 */}
@@ -1848,23 +1847,21 @@ function QRScanSection({ hw, onClose, currentUser }) {
                   {(() => { const s=STATUS_BADGE[asset.assetstatus]||{bg:"#f1f5f9",color:"#64748b"};
                     return <span style={{ background:s.bg, color:s.color, padding:"4px 12px", borderRadius:20, fontSize:11, fontWeight:700 }}>{ASSET_STATUS[asset.assetstatus]||asset.assetstatus}</span>; })()}
                 </div>
-                {/* 컬럼 설정 버튼 — 드롭다운이 항상 화면 안쪽으로 열리도록 */}
+                {/* 컬럼 설정 버튼 */}
                 <div ref={colMenuRef} style={{ position:"relative" }}>
                   <Btn onClick={()=>setShowColMenu(v=>!v)} style={{ fontSize:11, padding:"5px 8px" }}>
                     🔧 항목 {visibleQRCols.size}/{QR_ALL_FIELDS.length}
                   </Btn>
                   {showColMenu && (
                     <div style={{
-                      position:"fixed",          /* absolute → fixed: 모달/컨테이너 클리핑 방지 */
-                      top:"auto", right:"auto",
-                      /* 버튼 위치 기준으로 계산하지 않고 viewport 중앙에 띄움 */
+                      position:"fixed",
                       left:"50%", transform:"translateX(-50%)",
-                      bottom:80,                 /* 모바일 하단 탭바 위 */
+                      bottom:80,
                       background:"#fff",
                       border:"1px solid #e2e8f0", borderRadius:14,
                       boxShadow:"0 8px 32px rgba(0,0,0,0.18)",
                       zIndex:9000, padding:14,
-                      width: "min(280px, 90vw)"  /* 모바일에서 90vw 이하로 제한 */
+                      width:"min(280px, 90vw)"
                     }}>
                       <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8, paddingBottom:8, borderBottom:"1px solid #f0f0f0" }}>
                         <span style={{ fontSize:12, fontWeight:700 }}>표시 항목 선택</span>
@@ -1892,7 +1889,7 @@ function QRScanSection({ hw, onClose, currentUser }) {
                 </div>
               </div>
 
-              {/* 자산 필드 그리드 — 모바일에서 1열, 데스크탑에서 2열 */}
+              {/* 자산 필드 그리드 */}
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))", gap:8 }}>
                 {QR_ALL_FIELDS
                   .filter(f => visibleQRCols.has(f.key))
@@ -1910,11 +1907,6 @@ function QRScanSection({ hw, onClose, currentUser }) {
                     );
                   })}
               </div>
-
-              <div style={{ marginTop:14, display:"flex", gap:8 }}>
-                <Btn onClick={reset} style={{ flex:1, textAlign:"center" }}>🔄 다시 스캔</Btn>
-                {onClose && <Btn onClick={onClose} variant="primary" style={{ flex:1, textAlign:"center" }}>✕ 닫기</Btn>}
-              </div>
             </div>
           ) : notFound && (
             <div style={{ background:"#fff1f0", borderRadius:16, padding:24, textAlign:"center", border:"1px solid #ffa39e" }}>
@@ -1924,9 +1916,15 @@ function QRScanSection({ hw, onClose, currentUser }) {
                 아이메드 코드 <b style={{color:"#cf1322"}}>{scanned}</b> 에 해당하는 자산이 없습니다.
               </div>
               <div style={{ fontSize:11, color:"#94a3b8", marginBottom:14 }}>DB에 해당 아이메드 코드가 등록되어 있는지 확인해주세요.</div>
-              <Btn onClick={reset}>🔄 다시 스캔</Btn>
             </div>
           )}
+
+          {/* 🔄 다시 스캔 버튼 — 카드 바깥, 항상 마지막에 위치 */}
+          <div style={{ marginTop:20 }}>
+            <Btn onClick={reset} style={{ width:"100%", padding:"14px 0", fontSize:15, textAlign:"center", borderRadius:14 }}>
+              🔄 다시 스캔
+            </Btn>
+          </div>
         </div>
       )}
     </div>
