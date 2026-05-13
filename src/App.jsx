@@ -113,7 +113,7 @@ const api = {
   addHistory: (d) => fetch(`${BASE_URL}/history`, { method:"POST", headers:H, body:JSON.stringify(d) }).then(safeJson),
   // 휴지통
   getTrash:    () => fetch(`${BASE_URL}/trash?select=*&order=created_at.desc`, { headers:H }).then(safeJson),
-  addTrash:    (d) => fetch(`${BASE_URL}/trash`, { method:"POST", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(d) }).then(safeJson),
+  addTrash:    (d) => fetch(`${BASE_URL}/trash`, { method:"POST", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify({...d, item_data: typeof d.item_data === "string" ? d.item_data : JSON.stringify(d.item_data)}) }).then(safeJson),
   deleteTrash: (id) => fetch(`${BASE_URL}/trash?id=eq.${id}`, { method:"DELETE", headers:H }).then(safeJson),
 };
 
@@ -384,9 +384,9 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
       const name = item.gccode||item.modelname||"자산";
       try {
         await api.deleteHW(item.id);
-        await api.addTrash({ item_data:item, table_name:"assets", deletedat:nowISO() });
+        await api.addTrash({ item_data: JSON.stringify(item), table_name:"assets", deletedat:nowISO() });
         addHistory("하드웨어 삭제","hardware",item.id,name,"선택삭제-휴지통",JSON.stringify(item),"");
-      } catch(e) { console.error(e); }
+      } catch(e) { console.error(e); alert(`삭제 오류 (${name}): ${e.message}`); }
     }
     setSelectedIds(new Set());
     const fresh = await api.getHW();
@@ -422,11 +422,11 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
     const name = item.gccode||item.modelname||"자산";
     if (!window.confirm(`"${name}"을(를) 휴지통으로 이동하시겠습니까?`)) return;
     api.deleteHW(item.id)
-      .then(()=>api.addTrash({ item_data:item, table_name:"assets", deletedat:nowISO() }))
+      .then(()=>api.addTrash({ item_data: JSON.stringify(item), table_name:"assets", deletedat:nowISO() }))
       .then(added=>{
         setHw(prev=>prev.filter(h=>h.id!==item.id));
         const t=Array.isArray(added)?added[0]:added;
-        setTrash(prev=>[...prev,t]);
+        if(t) setTrash(prev=>[...prev,t]);
         addHistory("하드웨어 삭제","hardware",item.id,name,"휴지통 이동",JSON.stringify(item),"");
       }).catch(err=>alert("삭제 오류: "+err.message));
   };
@@ -873,8 +873,25 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
 
 
 
+  const deleteSelected = async () => {
+    if (selectedIds.size === 0) return alert("삭제할 항목을 선택하세요.");
+    if (!window.confirm(`선택한 ${selectedIds.size}건을 휴지통으로 이동하시겠습니까?`)) return;
+    const items = data.filter(s => selectedIds.has(s.id));
+    for (const item of items) {
+      try {
+        await api.deleteSW(item.id);
+        await api.addTrash({ item_data: JSON.stringify(item), table_name:"software", deletedat:nowISO() });
+        addHistory("소프트웨어 삭제","software",item.id,item.name,"선택삭제-휴지통",JSON.stringify(item),"");
+      } catch(e) { console.error(e); alert(`삭제 오류 (${item.name}): ${e.message}`); }
+    }
+    setSelectedIds(new Set());
+    const fresh = await api.getSW();
+    setSw(Array.isArray(fresh)?fresh:[]);
+    const newTrash = await api.getTrash();
+    setTrash(Array.isArray(newTrash)?newTrash:[]);
+  };
+
   const save = () => {
-    if(!form.name) return alert("소프트웨어명을 입력하세요.");
     setLoading(true);
     const isAdd=modal==="add";
     const before=isAdd?"":JSON.stringify(data.find(s=>s.id===form.id)||{});
@@ -889,11 +906,11 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
   const deleteItem = (item) => {
     if(!window.confirm(`"${item.name}" 휴지통으로 이동?`)) return;
     api.deleteSW(item.id)
-      .then(()=>api.addTrash({item_data:item,table_name:"software",deletedat:nowISO()}))
+      .then(()=>api.addTrash({item_data: JSON.stringify(item), table_name:"software", deletedat:nowISO()}))
       .then(added=>{
         setSw(prev=>prev.filter(s=>s.id!==item.id));
         const t=Array.isArray(added)?added[0]:added;
-        setTrash(prev=>[...prev,t]);
+        if(t) setTrash(prev=>[...prev,t]);
         addHistory("소프트웨어 삭제","software",item.id,item.name,"휴지통 이동",JSON.stringify(item),"");
       }).catch(err=>alert("삭제 오류: "+err.message));
   };
@@ -956,7 +973,16 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
       const res=await fetch(`${BASE_URL}/software`,{method:"POST",headers:{...H,"Prefer":"return=representation"},body:JSON.stringify(items)});
       if(!res.ok)throw new Error(await res.text());
       await api.getSW().then(list=>setSw(Array.isArray(list)?list:[]));
-      addHistory("파일 가져오기","software","",`${items.length}건`,file.name);
+      // 파일 전체 요약 로그
+      const names = items.map(it=>it.name||"-").join(", ");
+      const summary = `파일명: ${file.name} / ${items.length}건 / 소프트웨어: ${names.length>200?names.slice(0,200)+"...":names}`;
+      addHistory("파일 가져오기","software","",`${items.length}건`,summary,"",JSON.stringify(items.map(it=>({name:it.name,category:it.category,vendor:it.vendor,status:it.status,clinic:it.clinic,quantity:it.quantity}))));
+      // 항목별 개별 로그
+      items.forEach((it,idx)=>{
+        const name=it.name||`항목${idx+1}`;
+        const detail=`파일가져오기 (${file.name}) / 지점:${it.clinic||"-"} / 담당자:${it.assignedto||"-"} / 상태:${it.status||"-"} / 만료일:${it.expirydate||"-"}`;
+        addHistory("소프트웨어 등록(가져오기)","software","",name,detail,"",JSON.stringify(it));
+      });
       alert(`${items.length}건 완료!`);
     } catch(err){alert("가져오기 실패: "+err.message);}
     finally{setImportLoading(false);e.target.value="";}
@@ -1040,7 +1066,6 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
               </div>
             )}
           </div>
-          {canEdit && selectedIds.size>0 && <Btn onClick={deleteSelected} variant="danger">🗑️ 선택삭제 ({selectedIds.size})</Btn>}
           {canEdit && selectedIds.size>0 && <Btn onClick={deleteSelected} variant="danger">🗑️ 선택삭제 ({selectedIds.size})</Btn>}
           {canEdit && <Btn onClick={()=>{setForm({status:"active"});setModal("add");}} variant="primary">+ 등록</Btn>}
         </div>
@@ -1582,6 +1607,9 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit }) {
   const restore = (trashItem) => {
     const orig=getData(trashItem); const table=getTable(trashItem);
     const {id,created_at,...rest}=orig;
+    const name=rest.gccode||rest.modelname||rest.name||"항목";
+    const typeLabel=table==="assets"?"장비":"소프트웨어";
+    const aType=table==="assets"?"hardware":"software";
     api.deleteTrash(trashItem.id)
       .then(()=>fetch(`${BASE_URL}/${table}`,{method:"POST",headers:{...H,"Prefer":"return=representation"},body:JSON.stringify(rest)}).then(safeJson))
       .then(restored=>{
@@ -1589,18 +1617,19 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit }) {
         const item=Array.isArray(restored)?restored[0]:restored;
         if(table==="assets") setHw(prev=>[...prev,item]);
         else if(table==="software") setSw(prev=>[...prev,item]);
-        const name=rest.gccode||rest.modelname||rest.name||"항목";
-        addHistory("데이터 복구","trash",item?.id,name,`${table==="assets"?"장비":"소프트웨어"} 휴지통에서 복구`,"",JSON.stringify(rest));
+        addHistory("데이터 복구",aType,item?.id,name,`${typeLabel} 휴지통에서 복구`,"",JSON.stringify(rest));
       }).catch(err=>alert("복구 오류: "+err.message));
   };
   const deleteForever = (trashItem) => {
     if(!window.confirm("영구 삭제하시겠습니까? 복구 불가합니다.")) return;
     const orig = getData(trashItem);
     const name = orig.gccode||orig.modelname||orig.name||"항목";
+    const table = getTable(trashItem);
+    const aType = table==="assets"?"hardware":"software";
     api.deleteTrash(trashItem.id).then(()=>{
       setTrash(prev=>prev.filter(t=>t.id!==trashItem.id));
-      addHistory("영구 삭제","trash",trashItem.id,name,"휴지통에서 영구 삭제",JSON.stringify(orig),"");
-    });
+      addHistory("영구 삭제",aType,trashItem.id,name,"휴지통에서 영구 삭제",JSON.stringify(orig),"");
+    }).catch(err=>alert("영구삭제 오류: "+err.message));
   };
 
   return (
