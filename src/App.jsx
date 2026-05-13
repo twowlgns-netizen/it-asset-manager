@@ -84,6 +84,34 @@ const safeJson = async (res) => {
   try { return JSON.parse(t); } catch { return {}; }
 };
 
+// 클라이언트 IP 조회 (공인 IP)
+const getClientIP = async () => {
+  try {
+    const r = await fetch("https://api.ipify.org?format=json");
+    const d = await r.json();
+    return d.ip || "알 수 없음";
+  } catch {
+    return "알 수 없음";
+  }
+};
+
+// 브라우저/OS 간략 정보
+const getClientInfo = () => {
+  const ua = navigator.userAgent;
+  let os = "기타";
+  if (/Windows/.test(ua))      os = "Windows";
+  else if (/Mac OS/.test(ua))  os = "macOS";
+  else if (/Android/.test(ua)) os = "Android";
+  else if (/iPhone|iPad/.test(ua)) os = "iOS";
+  else if (/Linux/.test(ua))   os = "Linux";
+  let browser = "기타";
+  if (/Edg\//.test(ua))        browser = "Edge";
+  else if (/Chrome\//.test(ua))browser = "Chrome";
+  else if (/Firefox\//.test(ua))browser="Firefox";
+  else if (/Safari\//.test(ua))browser = "Safari";
+  return `${browser} / ${os}`;
+};
+
 const triggerDownload = (blob, name) => {
   const url = URL.createObjectURL(blob); const a = document.createElement("a");
   a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url);
@@ -143,8 +171,39 @@ export default function App() {
   const [history, setHistory] = useState([]);
   const [trash,   setTrash]   = useState([]);
 
-  const handleLogin  = (user) => { setIsLoggedIn(true); setCurrentUser(user); localStorage.setItem("isLoggedIn","true"); localStorage.setItem("currentUser",JSON.stringify(user)); };
-  const handleLogout = ()     => { setIsLoggedIn(false); setCurrentUser(null); localStorage.removeItem("isLoggedIn"); localStorage.removeItem("currentUser"); };
+  const handleLogin  = async (user) => {
+    setIsLoggedIn(true);
+    setCurrentUser(user);
+    localStorage.setItem("isLoggedIn","true");
+    localStorage.setItem("currentUser",JSON.stringify(user));
+    // 로그인 로그 기록
+    const ip = await getClientIP();
+    const clientInfo = getClientInfo();
+    const detail = `IP: ${ip} / 환경: ${clientInfo}`;
+    api.addHistory({
+      ts: nowISO(), action:"로그인", aType:"user", aId: user.id||"", aName: user.name,
+      detail, before:"", after:"",
+      userName: user.name, userRole: user.role, clinic: user.clinic||""
+    }).catch(console.error);
+  };
+
+  const handleLogout = async () => {
+    // 로그아웃 로그: currentUser가 있는 동안 먼저 기록
+    if (currentUser) {
+      const ip = await getClientIP();
+      const clientInfo = getClientInfo();
+      const detail = `IP: ${ip} / 환경: ${clientInfo}`;
+      await api.addHistory({
+        ts: nowISO(), action:"로그아웃", aType:"user", aId: currentUser.id||"", aName: currentUser.name,
+        detail, before:"", after:"",
+        userName: currentUser.name, userRole: currentUser.role, clinic: currentUser.clinic||""
+      }).catch(console.error);
+    }
+    setIsLoggedIn(false);
+    setCurrentUser(null);
+    localStorage.removeItem("isLoggedIn");
+    localStorage.removeItem("currentUser");
+  };
 
   const fetchAll = useCallback(() => {
     api.getHW().then(d=>setHw(Array.isArray(d)?d:[])).catch(console.error);
@@ -253,6 +312,18 @@ function DashboardSection({ hw, sw, history, isMobile }) {
     key:k, name:v, count: hw.filter(h=>h.clinic===k).length,
   }));
 
+  // 상태별 카드 — statusKey를 직접 사용해 badge 색상/텍스트를 STATUS_BADGE·ASSET_STATUS에서 가져옴
+  const statusCards = [
+    { label:"전체 장비",  statusKey:null,             value:hwStats.total,          textColor:"#0f6e56" },
+    { label:"사용중",     statusKey:"active",          value:hwStats.active,          textColor:"#2563eb" },
+    { label:"미사용",     statusKey:"inactive",        value:hwStats.inactive,        textColor:"#64748b" },
+    { label:"수리중",     statusKey:"repair",          value:hwStats.repair,          textColor:"#c2410c" },
+    { label:"폐기",       statusKey:"disposed",        value:hwStats.disposed,        textColor:"#cf1322" },
+    { label:"폐기대상",   statusKey:"dispose_target",  value:hwStats.dispose_target,  textColor:"#d97706" },
+    { label:"소프트웨어", statusKey:null,              value:sw.length,               textColor:"#7c3aed" },
+    { label:"활동 로그",  statusKey:null,              value:history.length,          textColor:"#0891b2" },
+  ];
+
   return (
     <div>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
@@ -276,27 +347,23 @@ function DashboardSection({ hw, sw, history, isMobile }) {
       </div>
 
       {/* 상태별 요약 */}
-      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":`repeat(${isMobile?2:4},1fr)`, gap:12, marginBottom:16 }}>
-        {[
-          { label:"전체 장비",   value:hwStats.total,          color:"#0f6e56", badge:null },
-          { label:"사용중",      value:hwStats.active,          color:"#2563eb", badge:{bg:"#e8f5e9",c:"#0f6e56"} },
-          { label:"미사용",      value:hwStats.inactive,        color:"#64748b", badge:{bg:"#f1f5f9",c:"#64748b"} },
-          { label:"수리중",      value:hwStats.repair,          color:"#c2410c", badge:{bg:"#fff7ed",c:"#c2410c"} },
-          { label:"폐기",        value:hwStats.disposed,        color:"#cf1322", badge:{bg:"#fff1f0",c:"#cf1322"} },
-          { label:"폐기대상",    value:hwStats.dispose_target,  color:"#d97706", badge:{bg:"#fef3c7",c:"#d97706"} },
-          { label:"소프트웨어",  value:sw.length,               color:"#7c3aed", badge:null },
-          { label:"활동 로그",   value:history.length,          color:"#0891b2", badge:null },
-        ].map(c => (
-          <div key={c.label} style={{ background:"#fff", padding:"14px 16px", borderRadius:16, border:"1px solid #e2e8f0", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-            <div>
-              <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>{c.label}</div>
-              <div style={{ fontSize:24, fontWeight:800, color:c.color }}>{c.value}</div>
+      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":`repeat(4,1fr)`, gap:12, marginBottom:16 }}>
+        {statusCards.map(c => {
+          const badge = c.statusKey ? STATUS_BADGE[c.statusKey] : null;
+          return (
+            <div key={c.label} style={{ background:"#fff", padding:"14px 16px", borderRadius:16, border:"1px solid #e2e8f0", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              <div>
+                <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>{c.label}</div>
+                <div style={{ fontSize:24, fontWeight:800, color:c.textColor }}>{c.value}</div>
+              </div>
+              {badge && (
+                <span style={{ background:badge.bg, color:badge.color, padding:"3px 10px", borderRadius:20, fontSize:11, fontWeight:700 }}>
+                  {ASSET_STATUS[c.statusKey]}
+                </span>
+              )}
             </div>
-            {c.badge && <span style={{ background:c.badge.bg, color:c.badge.c, padding:"3px 10px", borderRadius:20, fontSize:11, fontWeight:700 }}>
-              {ASSET_STATUS[c.label==="사용중"?"active":c.label==="미사용"?"inactive":c.label==="수리중"?"repair":c.label==="폐기"?"disposed":"dispose_target"]||c.label}
-            </span>}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* 최근 활동 */}
@@ -1273,7 +1340,7 @@ const HISTORY_CATEGORIES = {
   all:      "전체",
   hardware: "🖥️ 장비",
   software: "💿 소프트웨어",
-  user:     "👤 사용자",
+  user:     "👤 사용자/로그인",
   assets:   "🖥️ 장비(복구)",
   trash:    "🗑️ 휴지통",
 };
@@ -1601,55 +1668,108 @@ function QRScanSection({ hw, onClose }) {
 // 🗑️ [휴지통]
 // ================================================================
 function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit }) {
-  const getData = t => typeof t.item_data==="string"?(()=>{try{return JSON.parse(t.item_data);}catch{return {};}})():(t.item_data||{});
-  const getTable= t => t.table_name||"assets";
+  const [search,     setSearch]     = useState("");
+  const [filterType, setFilterType] = useState("all"); // "all" | "assets" | "software"
+
+  // DB 자동생성 컬럼 제거 — 복구 시 이 컬럼들을 포함하면 INSERT 오류 발생
+  const DB_AUTO_COLS = ["id","created_at","updated_at","deleted_at"];
+
+  const getData = t => {
+    if (typeof t.item_data === "string") {
+      try { return JSON.parse(t.item_data); } catch { return {}; }
+    }
+    return t.item_data || {};
+  };
+  const getTable = t => t.table_name || "assets";
+
+  const filtered = trash.filter(t => {
+    const d = getData(t);
+    const tb = getTable(t);
+    const matchType = filterType === "all" || tb === filterType;
+    const q = search.trim().toLowerCase();
+    const matchSearch = !q || [d.gccode, d.modelname, d.name, d.team, d.assignedto, d.clinic, d.username]
+      .some(v => (v || "").toLowerCase().includes(q));
+    return matchType && matchSearch;
+  });
 
   const restore = (trashItem) => {
-    const orig=getData(trashItem); const table=getTable(trashItem);
-    const {id,created_at,...rest}=orig;
-    const name=rest.gccode||rest.modelname||rest.name||"항목";
-    const typeLabel=table==="assets"?"장비":"소프트웨어";
-    const aType=table==="assets"?"hardware":"software";
-    api.deleteTrash(trashItem.id)
-      .then(()=>fetch(`${BASE_URL}/${table}`,{method:"POST",headers:{...H,"Prefer":"return=representation"},body:JSON.stringify(rest)}).then(safeJson))
-      .then(restored=>{
-        setTrash(prev=>prev.filter(t=>t.id!==trashItem.id));
-        const item=Array.isArray(restored)?restored[0]:restored;
-        if(table==="assets") setHw(prev=>[...prev,item]);
-        else if(table==="software") setSw(prev=>[...prev,item]);
-        addHistory("데이터 복구",aType,item?.id,name,`${typeLabel} 휴지통에서 복구`,"",JSON.stringify(rest));
-      }).catch(err=>alert("복구 오류: "+err.message));
-  };
-  const deleteForever = (trashItem) => {
-    if(!window.confirm("영구 삭제하시겠습니까? 복구 불가합니다.")) return;
-    const orig = getData(trashItem);
-    const name = orig.gccode||orig.modelname||orig.name||"항목";
+    const orig  = getData(trashItem);
     const table = getTable(trashItem);
-    const aType = table==="assets"?"hardware":"software";
-    api.deleteTrash(trashItem.id).then(()=>{
-      setTrash(prev=>prev.filter(t=>t.id!==trashItem.id));
-      addHistory("영구 삭제",aType,trashItem.id,name,"휴지통에서 영구 삭제",JSON.stringify(orig),"");
-    }).catch(err=>alert("영구삭제 오류: "+err.message));
+    // DB 자동생성 컬럼 전부 제거
+    const rest  = Object.fromEntries(Object.entries(orig).filter(([k]) => !DB_AUTO_COLS.includes(k)));
+    const name  = rest.gccode || rest.modelname || rest.name || "항목";
+    const typeLabel = table === "assets" ? "장비" : "소프트웨어";
+    const aType     = table === "assets" ? "hardware" : "software";
+    if (!window.confirm(`"${name}"을(를) 복구하시겠습니까?`)) return;
+    api.deleteTrash(trashItem.id)
+      .then(() => fetch(`${BASE_URL}/${table}`, {
+        method:"POST",
+        headers:{...H,"Prefer":"return=representation"},
+        body: JSON.stringify(rest)
+      }).then(safeJson))
+      .then(restored => {
+        setTrash(prev => prev.filter(t => t.id !== trashItem.id));
+        const item = Array.isArray(restored) ? restored[0] : restored;
+        if (table === "assets")   setHw(prev => [...prev, item]);
+        else if (table === "software") setSw(prev => [...prev, item]);
+        addHistory("데이터 복구", aType, item?.id, name,
+          `${typeLabel} 휴지통에서 복구`, "", JSON.stringify(rest));
+      }).catch(err => alert("복구 오류: " + err.message));
+  };
+
+  const deleteForever = (trashItem) => {
+    if (!window.confirm("영구 삭제하시겠습니까? 복구 불가합니다.")) return;
+    const orig  = getData(trashItem);
+    const name  = orig.gccode || orig.modelname || orig.name || "항목";
+    const table = getTable(trashItem);
+    const aType = table === "assets" ? "hardware" : "software";
+    api.deleteTrash(trashItem.id).then(() => {
+      setTrash(prev => prev.filter(t => t.id !== trashItem.id));
+      addHistory("영구 삭제", aType, trashItem.id, name,
+        "휴지통에서 영구 삭제", JSON.stringify(orig), "");
+    }).catch(err => alert("영구삭제 오류: " + err.message));
   };
 
   return (
     <div>
-      <h2 style={{marginBottom:16}}>휴지통 ({trash.length}건)</h2>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
+        <h2 style={{margin:0}}>휴지통 <span style={{fontSize:13,color:"#64748b",fontWeight:500}}>전체 {trash.length}건{filtered.length!==trash.length?` · 필터 ${filtered.length}건`:""}</span></h2>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+          {/* 구분 필터 */}
+          <select value={filterType} onChange={e=>setFilterType(e.target.value)}
+            style={{padding:"8px 10px",borderRadius:10,border:"1px solid #ddd",fontSize:13,background:"#fff"}}>
+            <option value="all">전체</option>
+            <option value="assets">장비</option>
+            <option value="software">소프트웨어</option>
+          </select>
+          {/* 검색 */}
+          <div style={{position:"relative"}}>
+            <span style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",color:"#94a3b8",fontSize:13}}>🔍</span>
+            <input placeholder="GC코드, 모델명, 사용자 검색..." value={search} onChange={e=>setSearch(e.target.value)}
+              style={{padding:"8px 10px 8px 28px",borderRadius:10,border:"1px solid #ddd",fontSize:13,width:220}}/>
+            {search && <button onClick={()=>setSearch("")}
+              style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"#94a3b8"}}>✕</button>}
+          </div>
+        </div>
+      </div>
       <ResponsiveTable
         cols={[
-          { label:"구분",   minWidth:110, render:t=>{ const tb=getTable(t); return <span style={{background:tb==="assets"?"#eff6ff":"#f0fdf4",color:tb==="assets"?"#2563eb":"#0f6e56",padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700}}>{tb==="assets"?"장비":"소프트웨어"}</span>; }},
-          { label:"이름",   minWidth:170, render:t=>{ const d=getData(t); return d.gccode||d.modelname||d.name||"-"; }},
-          { label:"팀/담당",minWidth:130, render:t=>{ const d=getData(t); return d.team||d.assignedto||"-"; }},
-          { label:"지점",   minWidth:130, render:t=>{ const d=getData(t); return CLINICS[d.clinic]||d.clinic||"-"; }},
-          { label:"삭제일", minWidth:155, render:t=>fDT(t.deletedat||t.deletedAt) },
-          { label:"관리",   minWidth:170, noClip:true, render:t=>canEdit&&(
+          { label:"구분",   minWidth:110, render:t=>{ const tb=getTable(t); return <span style={{background:tb==="assets"?"#eff6ff":"#f0fdf4",color:tb==="assets"?"#2563eb":"#0f6e56",padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700}}>{tb==="assets"?"🖥️ 장비":"💿 소프트웨어"}</span>; }},
+          { label:"이름/코드", minWidth:180, render:t=>{ const d=getData(t); return <span style={{fontWeight:600,fontSize:13}}>{d.gccode||d.modelname||d.name||"-"}</span>; }},
+          { label:"모델/버전", minWidth:140, render:t=>{ const d=getData(t); return d.modelname||d.version||"-"; }},
+          { label:"팀/담당",  minWidth:130, render:t=>{ const d=getData(t); return d.team||d.assignedto||"-"; }},
+          { label:"사용자",   minWidth:110, render:t=>{ const d=getData(t); return d.username||"-"; }},
+          { label:"지점",     minWidth:120, render:t=>{ const d=getData(t); return CLINICS[d.clinic]||d.clinic||"-"; }},
+          { label:"상태",     minWidth:110, render:t=>{ const d=getData(t); const sk=d.assetstatus||d.status; const b=STATUS_BADGE[sk]||{bg:"#f1f5f9",color:"#64748b"}; return sk?<span style={{background:b.bg,color:b.color,padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700}}>{ASSET_STATUS[sk]||SW_STATUS[sk]||sk}</span>:"-"; }},
+          { label:"삭제일",   minWidth:155, render:t=>fDT(t.deletedat||t.deletedAt||t.created_at) },
+          { label:"관리",     minWidth:180, noClip:true, render:t=>canEdit&&(
             <div style={{display:"flex",gap:5,flexWrap:"nowrap"}}>
-              <Btn onClick={()=>restore(t)} variant="warning" style={{fontSize:11,padding:"5px 8px"}}>복구</Btn>
-              <Btn onClick={()=>deleteForever(t)} variant="danger" style={{fontSize:11,padding:"5px 8px"}}>영구삭제</Btn>
+              <Btn onClick={()=>restore(t)} variant="warning" style={{fontSize:11,padding:"5px 8px"}}>🔄 복구</Btn>
+              <Btn onClick={()=>deleteForever(t)} variant="danger" style={{fontSize:11,padding:"5px 8px"}}>🗑️ 영구삭제</Btn>
             </div>
           )},
         ]}
-        rows={trash} empty="휴지통이 비어있습니다."
+        rows={filtered} empty={search||filterType!=="all"?"검색 결과가 없습니다.":"휴지통이 비어있습니다."}
       />
     </div>
   );
@@ -1659,16 +1779,40 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit }) {
 // 🔑 [로그인]
 // ================================================================
 function LoginPage({ onLogin, users }) {
-  const [id,setId]=useState(""); const [pw,setPw]=useState("");
-  const submit=e=>{ e.preventDefault(); const user=users.find(u=>u.loginid===id&&u.password===pw); if(user)onLogin(user); else alert("아이디 또는 비밀번호가 틀립니다."); };
+  const [id,  setId]      = useState("");
+  const [pw,  setPw]      = useState("");
+  const [loading, setLoading] = useState(false);
+  const [usersReady, setUsersReady] = useState(users.length > 0);
+
+  // users가 비동기로 로드되므로 준비 상태 감지
+  useEffect(() => { if (users.length > 0) setUsersReady(true); }, [users.length]);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    const user = users.find(u => u.loginid === id && u.password === pw);
+    if (!user) { alert("아이디 또는 비밀번호가 틀립니다."); return; }
+    setLoading(true);
+    try { await onLogin(user); }
+    finally { setLoading(false); }
+  };
+
   return (
     <div style={{height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f1f5f9"}}>
       <form onSubmit={submit} style={{width:340,background:"#fff",padding:40,borderRadius:24,boxShadow:"0 4px 24px rgba(0,0,0,0.08)"}}>
         <h1 style={{textAlign:"center",color:"#0f6e56",marginBottom:6,fontSize:22}}>IT Asset Manager</h1>
         <p style={{textAlign:"center",color:"#94a3b8",marginBottom:28,fontSize:12}}>GC녹십자아이메드 IT자산관리</p>
-        <input placeholder="아이디" value={id} onChange={e=>setId(e.target.value)} required style={{width:"100%",padding:14,marginBottom:10,borderRadius:10,border:"1px solid #eee",fontSize:14,boxSizing:"border-box"}}/>
-        <input type="password" placeholder="비밀번호" value={pw} onChange={e=>setPw(e.target.value)} required style={{width:"100%",padding:14,marginBottom:20,borderRadius:10,border:"1px solid #eee",fontSize:14,boxSizing:"border-box"}}/>
-        <Btn type="submit" variant="primary" style={{width:"100%",padding:15,fontSize:15}}>로그인</Btn>
+        {!usersReady && (
+          <div style={{textAlign:"center",fontSize:12,color:"#94a3b8",marginBottom:12,padding:"8px",background:"#f8fafc",borderRadius:8}}>
+            ⏳ 사용자 정보 로딩 중...
+          </div>
+        )}
+        <input placeholder="아이디" value={id} onChange={e=>setId(e.target.value)} required disabled={loading}
+          style={{width:"100%",padding:14,marginBottom:10,borderRadius:10,border:"1px solid #eee",fontSize:14,boxSizing:"border-box"}}/>
+        <input type="password" placeholder="비밀번호" value={pw} onChange={e=>setPw(e.target.value)} required disabled={loading}
+          style={{width:"100%",padding:14,marginBottom:20,borderRadius:10,border:"1px solid #eee",fontSize:14,boxSizing:"border-box"}}/>
+        <Btn type="submit" variant="primary" disabled={loading||!usersReady} style={{width:"100%",padding:15,fontSize:15}}>
+          {loading ? "로그인 중..." : "로그인"}
+        </Btn>
       </form>
     </div>
   );
