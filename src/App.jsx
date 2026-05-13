@@ -154,6 +154,12 @@ export default function App() {
     style.textContent = `
       html, body { overflow: hidden; height: 100%; margin: 0; padding: 0; box-sizing: border-box; }
       .hw-no-sb::-webkit-scrollbar { display: none; }
+      /* 메인 우측 세로 스크롤바 */
+      .main-scroll-area::-webkit-scrollbar { width: 8px; }
+      .main-scroll-area::-webkit-scrollbar-track { background: #f1f5f9; }
+      .main-scroll-area::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
+      .main-scroll-area::-webkit-scrollbar-thumb:hover { background: #64748b; }
+      /* 기타 스크롤바는 얇게 */
       ::-webkit-scrollbar { width: 4px; height: 4px; }
       ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
@@ -261,7 +267,7 @@ export default function App() {
         </div>
       )}
 
-      <div style={{ flex:1, overflowY:"auto", overflowX:"hidden", minWidth:0, scrollbarGutter:"stable" }}>
+      <div className="main-scroll-area" style={{ flex:1, overflowY:"scroll", overflowX:"hidden", minWidth:0 }}>
         {isMobile && (
           <div style={{ background:"#fff", padding:"14px 18px", borderBottom:"1px solid #e2e8f0", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, zIndex:10 }}>
             <span onClick={()=>{ setView("dashboard"); window.location.reload(); }} style={{ fontWeight:800, color:"#0f6e56", fontSize:16, cursor:"pointer", userSelect:"none" }}>IT Asset Manager</span>
@@ -447,19 +453,29 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
     if (selectedIds.size === 0) return alert("삭제할 항목을 선택하세요.");
     if (!window.confirm(`선택한 ${selectedIds.size}건을 휴지통으로 이동하시겠습니까?`)) return;
     const items = data.filter(h => selectedIds.has(h.id));
+    let successCount = 0;
     for (const item of items) {
       const name = item.gccode||item.modelname||"자산";
       try {
+        // ① 휴지통에 먼저 저장 (성공해야 원본 삭제)
+        await api.addTrash({ item_data: item, table_name:"assets", deletedat:nowISO() });
+        // ② 원본 삭제
         await api.deleteHW(item.id);
-        await api.addTrash({ item_data: JSON.stringify(item), table_name:"assets", deletedat:nowISO() });
-        addHistory("하드웨어 삭제","hardware",item.id,name,"선택삭제-휴지통",JSON.stringify(item),"");
-      } catch(e) { console.error(e); alert(`삭제 오류 (${name}): ${e.message}`); }
+        addHistory("하드웨어 삭제","hardware",item.id,name,
+          `선택삭제-휴지통 / 지점:${item.clinic||"-"} / 팀:${item.team||"-"} / 사용자:${item.username||"-"}`,
+          JSON.stringify(item),"");
+        successCount++;
+      } catch(e) {
+        console.error(e);
+        alert(`삭제 오류 (${name}): ${e.message}
+해당 항목은 건너뜁니다.`);
+      }
     }
     setSelectedIds(new Set());
-    const fresh = await api.getHW();
+    const [fresh, newTrash] = await Promise.all([api.getHW(), api.getTrash()]);
     setHw(Array.isArray(fresh)?fresh:[]);
-    const newTrash = await api.getTrash();
     setTrash(Array.isArray(newTrash)?newTrash:[]);
+    if (successCount > 0) alert(`${successCount}건이 휴지통으로 이동되었습니다.`);
   };
 
   const save = () => {
@@ -489,7 +505,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
     const name = item.gccode||item.modelname||"자산";
     if (!window.confirm(`"${name}"을(를) 휴지통으로 이동하시겠습니까?`)) return;
     api.deleteHW(item.id)
-      .then(()=>api.addTrash({ item_data: JSON.stringify(item), table_name:"assets", deletedat:nowISO() }))
+      .then(()=>api.addTrash({ item_data: item, table_name:"assets", deletedat:nowISO() }))
       .then(added=>{
         setHw(prev=>prev.filter(h=>h.id!==item.id));
         const t=Array.isArray(added)?added[0]:added;
@@ -552,33 +568,12 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
         const buf=await file.arrayBuffer(); const wb=XLSX.read(buf,{type:"array"});
         rawRows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
       }
-      // select 필드 한글label → 영문key 역변환 맵 생성
-      const selectReverseMap = {};
-      HW_FIELDS.forEach(f => {
-        if (f.type === "select" && f.options) {
-          selectReverseMap[f.key] = {};
-          Object.entries(f.options).forEach(([k, v]) => {
-            selectReverseMap[f.key][v] = k;           // "사용중" → "active"
-            selectReverseMap[f.key][k] = k;           // "active" → "active" (이미 영문이면 그대로)
-            selectReverseMap[f.key][v.toLowerCase()] = k;
-          });
-        }
-      });
-
       const existingMaxNum = Math.max(0, ...data.map(h => parseInt(h.num) || 0));
       const items=rawRows.filter(r=>Object.values(r).some(v=>v!=="")).map((row,idx)=>{
         const item={};
         HW_FIELDS.forEach(f=>{
-          let val=row[f.label]!==undefined?row[f.label]:(row[f.key]!==undefined?row[f.key]:"");
-          if (val !== "" && val !== null) {
-            val = String(val).trim();
-            // select 필드면 한글→key 변환
-            if (f.type === "select" && selectReverseMap[f.key]) {
-              const mapped = selectReverseMap[f.key][val] || selectReverseMap[f.key][val.toLowerCase()];
-              if (mapped) val = mapped;
-            }
-          }
-          item[f.key] = val !== "" ? val : null;
+          const val=row[f.label]!==undefined?row[f.label]:(row[f.key]!==undefined?row[f.key]:"");
+          item[f.key] = val!=="" ? val : null;
         });
         if(!item.assetstatus) item.assetstatus = "active";
         if(!item.assettype)   item.assettype   = "laptop";
@@ -649,7 +644,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
           onChange={e=>{ const n=new Set(selectedIds); if(e.target.checked){allPageIds.forEach(id=>n.add(id));}else{allPageIds.forEach(id=>n.delete(id));} setSelectedIds(n); }}
           style={{accentColor:"#0f6e56",width:13,height:13,cursor:"pointer"}} />
       ),
-      minWidth:44, noClip:true,
+      minWidth:36, noClip:true,
       render: h=>(
         <input type="checkbox" checked={selectedIds.has(h.id)}
           onChange={e=>{ const n=new Set(selectedIds); e.target.checked?n.add(h.id):n.delete(h.id); setSelectedIds(n); }}
@@ -965,18 +960,29 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
     if (selectedIds.size === 0) return alert("삭제할 항목을 선택하세요.");
     if (!window.confirm(`선택한 ${selectedIds.size}건을 휴지통으로 이동하시겠습니까?`)) return;
     const items = data.filter(s => selectedIds.has(s.id));
+    let successCount = 0;
     for (const item of items) {
+      const name = item.name||"소프트웨어";
       try {
+        // ① 휴지통에 먼저 저장
+        await api.addTrash({ item_data: item, table_name:"software", deletedat:nowISO() });
+        // ② 원본 삭제
         await api.deleteSW(item.id);
-        await api.addTrash({ item_data: JSON.stringify(item), table_name:"software", deletedat:nowISO() });
-        addHistory("소프트웨어 삭제","software",item.id,item.name,"선택삭제-휴지통",JSON.stringify(item),"");
-      } catch(e) { console.error(e); alert(`삭제 오류 (${item.name}): ${e.message}`); }
+        addHistory("소프트웨어 삭제","software",item.id,name,
+          `선택삭제-휴지통 / 벤더:${item.vendor||"-"} / 담당:${item.assignedto||"-"} / 지점:${item.clinic||"-"}`,
+          JSON.stringify(item),"");
+        successCount++;
+      } catch(e) {
+        console.error(e);
+        alert(`삭제 오류 (${name}): ${e.message}
+해당 항목은 건너뜁니다.`);
+      }
     }
     setSelectedIds(new Set());
-    const fresh = await api.getSW();
+    const [fresh, newTrash] = await Promise.all([api.getSW(), api.getTrash()]);
     setSw(Array.isArray(fresh)?fresh:[]);
-    const newTrash = await api.getTrash();
     setTrash(Array.isArray(newTrash)?newTrash:[]);
+    if (successCount > 0) alert(`${successCount}건이 휴지통으로 이동되었습니다.`);
   };
 
   const save = () => {
@@ -994,7 +1000,7 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
   const deleteItem = (item) => {
     if(!window.confirm(`"${item.name}" 휴지통으로 이동?`)) return;
     api.deleteSW(item.id)
-      .then(()=>api.addTrash({item_data: JSON.stringify(item), table_name:"software", deletedat:nowISO()}))
+      .then(()=>api.addTrash({item_data: item, table_name:"software", deletedat:nowISO()}))
       .then(added=>{
         setSw(prev=>prev.filter(s=>s.id!==item.id));
         const t=Array.isArray(added)?added[0]:added;
@@ -1049,30 +1055,9 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
         const buf=await file.arrayBuffer();const wb=XLSX.read(buf,{type:"array"});
         rawRows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
       }
-      const swSelectMap = {};
-      SW_FIELDS.forEach(f => {
-        if (f.type === "select" && f.options) {
-          swSelectMap[f.key] = {};
-          Object.entries(f.options).forEach(([k, v]) => {
-            swSelectMap[f.key][v] = k;
-            swSelectMap[f.key][k] = k;
-          });
-        }
-      });
-
       const items=rawRows.filter(r=>Object.values(r).some(v=>v!=="")).map(row=>{
         const item={status:"active"};
-        SW_FIELDS.forEach(f=>{
-          let val=row[f.label]!==undefined?row[f.label]:(row[f.key]!==undefined?row[f.key]:"");
-          if (val !== "" && val !== null) {
-            val = String(val).trim();
-            if (f.type === "select" && swSelectMap[f.key]) {
-              const mapped = swSelectMap[f.key][val] || swSelectMap[f.key][val.toLowerCase()];
-              if (mapped) val = mapped;
-            }
-          }
-          if(val!=="") item[f.key]=val;
-        });
+        SW_FIELDS.forEach(f=>{const val=row[f.label]!==undefined?row[f.label]:(row[f.key]!==undefined?row[f.key]:"");if(val!=="")item[f.key]=val;});
         return item;
       });
       if(!items.length){alert("데이터 없음");return;}
@@ -1123,7 +1108,7 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
           onChange={e=>{const n=new Set(selectedIds);if(e.target.checked){allPageSWIds.forEach(id=>n.add(id));}else{allPageSWIds.forEach(id=>n.delete(id));}setSelectedIds(n);}}
           style={{accentColor:"#0f6e56",width:13,height:13,cursor:"pointer"}}/>
       ),
-      minWidth:44, noClip:true,
+      minWidth:36, noClip:true,
       render:s=>(
         <input type="checkbox" checked={selectedIds.has(s.id)}
           onChange={e=>{const n=new Set(selectedIds);e.target.checked?n.add(s.id):n.delete(s.id);setSelectedIds(n);}}
