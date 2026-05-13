@@ -558,6 +558,12 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
       XLSX.utils.book_append_sheet(wb,ws,"장비목록"); XLSX.writeFile(wb,`장비목록_${todayStr()}.xlsx`);
     } catch { alert("xlsx 패키지를 설치하세요: npm install xlsx"); }
   };
+  // 한글 라벨 → enum 키 역방향 맵 (가져오기 시 변환용)
+  const LABEL_TO_KEY = (dict) => Object.fromEntries(Object.entries(dict).map(([k,v])=>[v,k]));
+  const CLINIC_LABEL_MAP      = LABEL_TO_KEY(CLINICS);
+  const ASSETSTATUS_LABEL_MAP = LABEL_TO_KEY(ASSET_STATUS);
+  const ASSETTYPE_LABEL_MAP   = LABEL_TO_KEY(ASSET_TYPES);
+
   const parseCSVLine = (line) => {
     const res=[]; let cur=""; let inQ=false;
     for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}else if(c===","&&!inQ){res.push(cur.trim());cur="";}else cur+=c;}
@@ -585,6 +591,10 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
           const val=row[f.label]!==undefined?row[f.label]:(row[f.key]!==undefined?row[f.key]:"");
           item[f.key] = val!=="" ? val : null;
         });
+        // 한글 라벨로 입력된 경우 enum 키로 변환
+        if(item.clinic)      item.clinic      = CLINIC_LABEL_MAP[item.clinic]      ?? item.clinic;
+        if(item.assetstatus) item.assetstatus = ASSETSTATUS_LABEL_MAP[item.assetstatus] ?? item.assetstatus;
+        if(item.assettype)   item.assettype   = ASSETTYPE_LABEL_MAP[item.assettype]   ?? item.assettype;
         if(!item.assetstatus) item.assetstatus = "active";
         if(!item.assettype)   item.assettype   = "laptop";
         item.num = existingMaxNum + idx + 1;
