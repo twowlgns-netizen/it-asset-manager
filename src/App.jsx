@@ -222,7 +222,7 @@ export default function App() {
 
   const addHistory = useCallback((action, aType, aId, aName, detail, before="", after="") => {
     if (!currentUser) return;
-    api.addHistory({ ts: nowISO(), action, aType, aId, aName, detail, before, after, userName: currentUser.name, userRole: currentUser.role, clinic: currentUser.clinic || "" })
+    api.addHistory({ ts: nowISO(), action, atype: aType, aid: aId, aname: aName, detail, before_data: before, after_data: after, username: currentUser.name, userrole: currentUser.role, clinic: currentUser.clinic || "" })
       .then(() => api.getHistory().then(d => { const l=Array.isArray(d)?d:[]; setHistory(l.sort((a,b)=>new Date(b.ts)-new Date(a.ts))); }))
       .catch(console.error);
   }, [currentUser]);
@@ -374,9 +374,9 @@ function DashboardSection({ hw, sw, history, isMobile }) {
           : history.slice(0,10).map((h,i) => (
             <div key={i} style={{ padding:"11px 16px", borderBottom:"1px solid #f8fafc", display:"flex", gap:12, alignItems:"center", flexWrap:"wrap" }}>
               <span style={{ fontSize:11, color:"#94a3b8", flexShrink:0 }}>{fDT(h.ts)}</span>
-              <span style={{ fontSize:12 }}><b style={{color:"#0f6e56"}}>{h.userName}</b></span>
+              <span style={{ fontSize:12 }}><b style={{color:"#0f6e56"}}>{h.username}</b></span>
               <span style={{ fontSize:12, background:"#f1f5f9", padding:"2px 8px", borderRadius:10 }}>{h.action}</span>
-              <span style={{ fontSize:12, color:"#334155" }}>{h.aName}</span>
+              <span style={{ fontSize:12, color:"#334155" }}>{h.aname}</span>
               {h.detail && <span style={{ fontSize:11, color:"#94a3b8" }}>{h.detail}</span>}
             </div>
           ))
@@ -1364,16 +1364,16 @@ function HistorySection({ history }) {
   const filtered = history.filter(h=>{
     const q = query.trim().toLowerCase();
     const matchQ = !q || (field==="all"
-      ? ["userName","action","aName","detail","clinic"].some(k=>(h[k]||"").toLowerCase().includes(q))
+      ? ["username","action","aname","detail","clinic"].some(k=>(h[k]||"").toLowerCase().includes(q))
       : (h[field]||"").toLowerCase().includes(q));
-    const matchCat = filterCat==="all" || h.aType===filterCat;
+    const matchCat = filterCat==="all" || h.atype===filterCat;
     const matchAct = !filterAction || h.action===filterAction;
     return matchQ && matchCat && matchAct;
   });
 
   // 카테고리별 카운트
   const catCounts = {};
-  history.forEach(h=>{ const k=h.aType||"etc"; catCounts[k]=(catCounts[k]||0)+1; });
+  history.forEach(h=>{ const k=h.atype||"etc"; catCounts[k]=(catCounts[k]||0)+1; });
 
   return (
     <div>
@@ -1406,9 +1406,9 @@ function HistorySection({ history }) {
         <select value={field} onChange={e=>setField(e.target.value)}
           style={{padding:"9px 10px",borderRadius:10,border:"1px solid #ddd",fontSize:13,background:"#fff"}}>
           <option value="all">전체 필드</option>
-          <option value="userName">수행자</option>
+          <option value="username">수행자</option>
           <option value="action">액션</option>
-          <option value="aName">대상</option>
+          <option value="aname">대상</option>
           <option value="detail">상세</option>
           <option value="clinic">지점</option>
         </select>
@@ -1433,16 +1433,16 @@ function HistorySection({ history }) {
           { label:"시간",    minWidth:155, render:h=><span style={{fontSize:11,whiteSpace:"nowrap",color:"#64748b"}}>{fDT(h.ts)}</span> },
           { label:"수행자",  minWidth:100, key:"userName" },
           { label:"카테고리",minWidth:130, render:h=>{
-            const b=CATEGORY_BADGE[h.aType]||{bg:"#f1f5f9",color:"#64748b"};
+            const b=CATEGORY_BADGE[h.atype]||{bg:"#f1f5f9",color:"#64748b"};
             return <span style={{background:b.bg,color:b.color,padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
-              {HISTORY_CATEGORIES[h.aType]||h.aType||"-"}
+              {HISTORY_CATEGORIES[h.atype]||h.atype||"-"}
             </span>;
           }},
           { label:"액션",    minWidth:170, render:h=><span style={{background:"#f1f5f9",padding:"2px 8px",borderRadius:10,fontSize:12}}>{h.action}</span> },
           { label:"대상",    minWidth:130, key:"aName" },
           { label:"상세",    minWidth:240, key:"detail" },
           { label:"지점",    minWidth:120, render:h=>CLINICS[h.clinic]||h.clinic||"-" },
-          { label:"변경내용",minWidth:90,  noClip:true, render:h=>(h.before||h.after)&&(
+          { label:"변경내용",minWidth:90,  noClip:true, render:h=>(h.before_data||h.after_data)&&(
             <Btn onClick={()=>setShowDetail(h)} style={{fontSize:11,padding:"4px 8px"}}>보기</Btn>
           )},
         ]}
@@ -1451,7 +1451,7 @@ function HistorySection({ history }) {
       {showDetail && (
         <Modal title="변경 내용 상세" onClose={()=>setShowDetail(null)}>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            {["before","after"].map(k=>(
+            {["before_data","after_data"].map(k=>(
               <div key={k}>
                 <div style={{fontSize:12,fontWeight:700,color:k==="before"?"#cf1322":"#0f6e56",marginBottom:6}}>
                   {k==="before"?"변경 전":"변경 후"}
