@@ -230,6 +230,12 @@ const api = {
     return safeJson(res);
   },
   deleteTrash: (id) => fetch(`${BASE_URL}/trash?id=eq.${id}`, { method:"DELETE", headers:H }).then(safeJson),
+  // 다건 한 번에 삭제 (PostgREST in 연산자)
+  deleteTrashBulk: (ids) => {
+    if (!ids || ids.length === 0) return Promise.resolve();
+    const list = ids.join(",");
+    return fetch(`${BASE_URL}/trash?id=in.(${list})`, { method:"DELETE", headers:H }).then(safeJson);
+  },
 
   // ── 대시보드 전용: DB에서 직접 count 조회 (프론트 배열 의존 제거)
   getDashboardStats: async () => {
@@ -2712,61 +2718,66 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
     }).catch(err => alert("영구삭제 오류: " + err.message));
   };
 
-  // ── 선택 영구삭제
+  // ── 선택 영구삭제 (배치: 단 1번 요청으로 전체 삭제)
   const deleteSelectedForever = async () => {
     if (selectedIds.size === 0) return alert("삭제할 항목을 선택하세요.");
     if (!window.confirm(`선택한 ${selectedIds.size}건을 영구 삭제하시겠습니까?\n복구할 수 없습니다.`)) return;
     setLoading(true);
-    let ok = 0, fail = 0;
-    for (const id of selectedIds) {
-      const trashItem = trash.find(t => t.id === id);
-      if (!trashItem) continue;
-      const orig  = getData(trashItem);
-      const name  = orig.gccode || orig.modelname || orig.name || "항목";
-      const table = getTable(trashItem);
-      const aType = table === "assets" ? "hardware" : "software";
-      try {
-        await api.deleteTrash(id);
-        setTrash(prev => prev.filter(t => t.id !== id));
-        addHistory("영구 삭제", aType, id, name, "휴지통에서 영구 삭제 (선택삭제)", JSON.stringify(orig), "");
-        ok++;
-      } catch { fail++; }
+    const ids = [...selectedIds];
+    try {
+      // 로그용 메타 수집 (삭제 전)
+      const targets = ids.map(id => trash.find(t => t.id === id)).filter(Boolean);
+      // ★ 단 1번의 DELETE 요청으로 전체 삭제
+      await api.deleteTrashBulk(ids);
+      // 상태 즉시 반영
+      setTrash(prev => prev.filter(t => !selectedIds.has(t.id)));
+      // 로그 기록 (일괄)
+      targets.forEach(trashItem => {
+        const orig  = getData(trashItem);
+        const name  = orig.gccode || orig.modelname || orig.name || "항목";
+        const table = getTable(trashItem);
+        const aType = table === "assets" ? "hardware" : "software";
+        addHistory("영구 삭제", aType, trashItem.id, name, "휴지통에서 영구 삭제 (선택삭제)", JSON.stringify(orig), "");
+      });
+      setSelectedIds(new Set());
+      alert(`${ids.length}건이 영구 삭제됐습니다.`);
+    } catch(err) {
+      alert("삭제 오류: " + err.message);
+    } finally {
+      setLoading(false);
+      await refreshTrash();
     }
-    setSelectedIds(new Set());
-    setLoading(false);
-    await refreshTrash();
-    if (fail > 0) alert(`완료: ${ok}건 삭제, ${fail}건 실패`);
-    else          alert(`${ok}건이 영구 삭제됐습니다.`);
   };
 
-  // ── 선택 복구
+  // ── 선택 복구 (병렬 처리: Promise.allSettled)
   const restoreSelected = async () => {
     if (selectedIds.size === 0) return alert("복구할 항목을 선택하세요.");
     if (!window.confirm(`선택한 ${selectedIds.size}건을 복구하시겠습니까?`)) return;
     setLoading(true);
-    let ok = 0, fail = 0;
-    for (const id of selectedIds) {
-      const trashItem = trash.find(t => t.id === id);
-      if (!trashItem) continue;
+    const targets = [...selectedIds]
+      .map(id => trash.find(t => t.id === id))
+      .filter(Boolean);
+
+    const results = await Promise.allSettled(targets.map(async trashItem => {
       const orig  = getData(trashItem);
       const table = getTable(trashItem);
       const rest  = Object.fromEntries(Object.entries(orig).filter(([k]) => !DB_AUTO_COLS.includes(k)));
       const name  = rest.gccode || rest.modelname || rest.name || "항목";
       const aType = table === "assets" ? "hardware" : "software";
-      try {
-        await api.deleteTrash(id);
-        const res = await fetch(`${BASE_URL}/${table}`, {
-          method:"POST", headers:{...H,"Prefer":"return=representation"}, body: JSON.stringify(rest)
-        }).then(safeJson);
-        setTrash(prev => prev.filter(t => t.id !== id));
-        const item = Array.isArray(res) ? res[0] : res;
-        if (table === "assets")        setHw(prev => [...prev, item]);
-        else if (table === "software") setSw(prev => [...prev, item]);
-        addHistory("데이터 복구", aType, item?.id, name,
-          `휴지통에서 복구 (선택복구)`, "", JSON.stringify(rest));
-        ok++;
-      } catch { fail++; }
-    }
+      // 휴지통 삭제 + 원본 복구 병렬 아님(순서 보장 필요) → 순차지만 항목들 간엔 병렬
+      await api.deleteTrash(trashItem.id);
+      const res  = await fetch(`${BASE_URL}/${table}`, {
+        method:"POST", headers:{...H,"Prefer":"return=representation"}, body: JSON.stringify(rest)
+      }).then(safeJson);
+      const item = Array.isArray(res) ? res[0] : res;
+      if (table === "assets")        setHw(prev => [...prev, item]);
+      else if (table === "software") setSw(prev => [...prev, item]);
+      setTrash(prev => prev.filter(t => t.id !== trashItem.id));
+      addHistory("데이터 복구", aType, item?.id, name, `휴지통에서 복구 (선택복구)`, "", JSON.stringify(rest));
+    }));
+
+    const ok   = results.filter(r => r.status === "fulfilled").length;
+    const fail = results.filter(r => r.status === "rejected").length;
     setSelectedIds(new Set());
     setLoading(false);
     await refreshTrash();
@@ -3443,13 +3454,21 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
                     <th key={i}
                       onClick={()=>handleColHeaderClick(i)}
                       onContextMenu={(e)=>handleColHeaderRightClick(e,i)}
-                      style={{padding:i===0?"10px 4px":"12px 12px",textAlign:i===0?"center":"left",
+                      style={{padding:i===0?"0":"12px 12px",textAlign:i===0?"center":"left",
+                        verticalAlign:"middle",
                         fontSize:11,color:"#475569",borderBottom:"2px solid #e2e8f0",
                         borderRight:"1px solid #e8eef4",whiteSpace:"nowrap",fontWeight:700,
                         position:"relative",userSelect:"none",overflow:"visible",
                         boxSizing:"border-box",cursor:isSortable?"pointer":"default"}}>
-                      <span style={{display:"flex",alignItems:"center",gap:2,overflow:"hidden",paddingRight:i===0?0:8}}>
-                        <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{typeof c.label==="function"?c.label():c.label}</span>
+                      <span style={{
+                        display:"flex", alignItems:"center", justifyContent: i===0?"center":"flex-start",
+                        gap:2, overflow:"hidden", paddingRight:i===0?0:8,
+                        height:"100%"
+                      }}>
+                        {typeof c.label==="function"
+                          ? <span style={{display:"flex",alignItems:"center",justifyContent:"center",width:"100%"}}>{c.label()}</span>
+                          : <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{c.label}</span>
+                        }
                         {isSortable && sortIndicator(i)}
                       </span>
                       <ResizeHandle onResize={d=>handleResize(i,d)} onDoubleClick={()=>autoFitCol(i)}/>
@@ -3483,12 +3502,18 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
                           onMouseEnter={e=>{ if(!isSel) e.currentTarget.style.background="#eff6ff"; }}
                           onMouseLeave={e=>{ e.currentTarget.style.background=rowBg(ri,isSel); }}>
                           {cols.map((c,ci)=>(
-                            <td key={ci} style={{padding:ci===0?"9px 4px":"11px 12px",fontSize:13,
-                              textAlign:ci===0?"center":"left",height:VIRT_ROW_H,
+                            <td key={ci} style={{
+                              padding: ci===0 ? "0" : "11px 12px",
+                              fontSize:13,
+                              textAlign: ci===0 ? "center" : "left",
+                              verticalAlign: "middle",
+                              height:VIRT_ROW_H,
                               overflow:c.noClip?"visible":"hidden",
                               textOverflow:c.noClip?"unset":"ellipsis",
                               whiteSpace:c.noClip?"normal":"nowrap",
-                              borderRight:"1px solid #f0f4f8",boxSizing:"border-box"}}>
+                              borderRight:"1px solid #f0f4f8",
+                              boxSizing:"border-box"
+                            }}>
                               {c.render?c.render(row,ri,sortedRows):row[c.key]}
                             </td>
                           ))}
