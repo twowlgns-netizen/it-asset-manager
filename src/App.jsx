@@ -174,7 +174,9 @@ export default function App() {
   useEffect(() => {
     const style = document.createElement("style");
     style.textContent = `
-      html, body { overflow: hidden; height: 100%; margin: 0; padding: 0; box-sizing: border-box; }
+      html { height: 100%; margin: 0; padding: 0; }
+      body { height: 100%; margin: 0; padding: 0; overflow: hidden; box-sizing: border-box; }
+      #root { height: 100%; overflow: hidden; }
       .hw-no-sb::-webkit-scrollbar { display: none; }
       /* 메인 우측 세로 스크롤바 - 테이블 하단 스크롤바와 동일 스타일 */
       .main-content-area::-webkit-scrollbar { width: 12px; }
@@ -353,14 +355,14 @@ export default function App() {
         </div>
       )}
 
-      <div className="main-content-area" style={{ flex:1, overflowY:"auto", overflowX:"hidden", minWidth:0 }}>
+      <div className="main-content-area" style={{ flex:1, overflowY:"auto", overflowX:"hidden", minWidth:0, WebkitOverflowScrolling:"touch" }}>
         {isMobile && (
           <div style={{ background:"#fff", padding:"14px 18px", borderBottom:"1px solid #e2e8f0", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, zIndex:10 }}>
             <span onClick={()=>{ setView("dashboard"); window.location.reload(); }} style={{ fontWeight:800, color:"#0f6e56", fontSize:16, cursor:"pointer", userSelect:"none" }}>IT Asset Manager</span>
             <Btn onClick={handleLogout} style={{ fontSize:11, padding:"5px 10px" }}>로그아웃</Btn>
           </div>
         )}
-        <main style={{ padding:isMobile?"16px":"32px", paddingBottom:isMobile?96:40 }}>
+        <main style={{ padding:isMobile?"16px":"32px", paddingBottom:isMobile?130:60, boxSizing:"border-box", width:"100%" }}>
           {view==="dashboard"  && <DashboardSection  hw={hw} sw={sw} history={history} historyCount={historyCount} trash={trash} isMobile={isMobile} />}
           {view==="hardware"   && <HardwareSection   data={hw} setHw={setHw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} setView={setView} initClinic={hwClinicFilter} />}
           {view==="software"   && <SoftwareSection   data={sw} setSw={setSw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} initClinic={swClinicFilter} />}
@@ -388,7 +390,7 @@ export default function App() {
 // ================================================================
 // 📊 [대시보드]
 // ================================================================
-function DashboardSection({ hw, sw, history, historyCount, trash, isMobile }) {
+function DashboardSection({ hw, sw, history, historyCount, trash, isMobile, onHwClinic, onSwClinic }) {
   const [clinicFilter, setClinicFilter] = useState("all");
   const filtered = clinicFilter === "all" ? hw : hw.filter(h => h.clinic === clinicFilter);
 
@@ -434,7 +436,7 @@ function DashboardSection({ hw, sw, history, historyCount, trash, isMobile }) {
       {/* 지점별 카운트 */}
       <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"repeat(3,1fr)", gap:12, marginBottom:20 }}>
         {clinicCounts.map(c => (
-          <div key={c.key} onClick={()=>setClinicFilter(c.key)}
+          <div key={c.key} onClick={()=>{ setClinicFilter(c.key); if(onHwClinic) onHwClinic(c.key); }}
             style={{ background: clinicFilter===c.key?"#e8f5e9":"#fff", padding:"16px 20px", borderRadius:16, border:`1.5px solid ${clinicFilter===c.key?"#0f6e56":"#e2e8f0"}`, cursor:"pointer" }}>
             <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>🏥 {c.name}</div>
             <div style={{ fontSize:28, fontWeight:800, color:"#0f6e56" }}>{c.count}</div>
@@ -763,6 +765,9 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
           item.assettype   = ASSETTYPE_LABEL_MAP[item.assettype]   ?? item.assettype;
         if(!item.assetstatus) item.assetstatus = "active";
         if(!item.assettype)   item.assettype   = "laptop";
+        // name/type 컬럼 NOT NULL 대응 (구버전 스키마 호환)
+        if(!item.name) item.name = item.modelname || item.gccode || item.imedcode || "자산";
+        if(!item.type) item.type = item.assettype || "laptop";
         const n = existingMaxNum + idx + 1;
         item.num = n;
         item.hwnum = `HW-${n}`;
@@ -840,7 +845,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
           style={{accentColor:"#0f6e56",width:15,height:15,cursor:"pointer",display:"block",margin:"0 auto"}} />
       )
     },
-    ...ALL_HW_COLS.filter(c=>visibleCols.has(c.key)).map(c=>({ label:c.label, render:COL_RENDERERS[c.key]||(h=>h[c.key]||"-") }))
+    ...ALL_HW_COLS.filter(c=>visibleCols.has(c.key)).map(c=>({ key:c.key, label:c.label, render:COL_RENDERERS[c.key]||(h=>h[c.key]||"-") }))
   ];
   if (canEdit) activeCols.push({ label:"관리", minWidth:190, noClip:true, render: h=>(
     <div style={{display:"flex",gap:4,flexWrap:"nowrap"}}>
@@ -1364,7 +1369,7 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
           style={{accentColor:"#0f6e56",width:15,height:15,cursor:"pointer",display:"block",margin:"0 auto"}}/>
       )
     },
-    ...ALL_SW_COLS.filter(c=>visibleCols.has(c.key)).map(c=>({label:c.label,render:SW_RENDERERS[c.key]||(s=>s[c.key]||"-")}))
+    ...ALL_SW_COLS.filter(c=>visibleCols.has(c.key)).map(c=>({key:c.key,label:c.label,render:SW_RENDERERS[c.key]||(s=>s[c.key]||"-")}))
   ];
   if(canEdit) activeSWCols.push({label:"관리", minWidth:170, noClip:true, render:s=>(
     <div style={{display:"flex",gap:4,flexWrap:"nowrap"}}>
@@ -1615,6 +1620,9 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
       // 패스워드 변경 시 변경일 갱신
       formData = { ...form, password_changed_date: todayStr() };
     }
+    // NOT NULL 컬럼 보장 (name, loginid)
+    if(!formData.name)    formData = { ...formData, name:    users.find(u=>u.id===formData.id)?.name    || formData.name    || "" };
+    if(!formData.loginid) formData = { ...formData, loginid: users.find(u=>u.id===formData.id)?.loginid || formData.loginid || "" };
     const req=isAdd?api.addUser(formData):api.updateUser(formData.id,formData);
     req.then(()=>api.getUsers()).then(list=>{
       setUsers(Array.isArray(list)&&list.length?list:INIT_USERS);
@@ -1846,11 +1854,10 @@ function HistorySection({ history, historyCount, currentUser }) {
 
       <ResponsiveTable
         cols={[
-          { label:"번호", minWidth:60, render:(h,ri,allRows)=>{
-            // 전체 history에서 오래된 것부터 순번 부여 (기록된 순서)
-            const globalIdx = history.findIndex(x=>x.id===h.id||x.ts===h.ts);
-            const totalHist = history.length;
-            return <span style={{color:"#64748b",fontSize:12}}>{totalHist - globalIdx}</span>;
+          { label:"번호", minWidth:60, render:(h,ri)=>{
+            // filtered 기준으로 순번: 최신=1번
+            const idx = filtered.findIndex(x=>(x.id&&x.id===h.id)||(x.ts===h.ts&&x.username===h.username));
+            return <span style={{color:"#64748b",fontSize:12}}>{idx>=0 ? idx+1 : ri+1}</span>;
           }},
           { label:"시간",    minWidth:155, render:h=><span style={{fontSize:11,whiteSpace:"nowrap",color:"#64748b"}}>{fDT(h.ts)}</span> },
           { label:"수행자",  minWidth:100, key:"username" },
