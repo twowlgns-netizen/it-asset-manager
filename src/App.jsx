@@ -287,7 +287,7 @@ export default function App() {
 
       /* ── rt-wrap: 가로 스크롤 전담, 세로는 없음 ── */
       /* 네이티브 가로 스크롤바 숨김 (커스텀으로 대체) */
-      .rt-wrap { scrollbar-width: none; }
+      .rt-wrap { scrollbar-width: none; overflow: -moz-scrollbars-none; }
       .rt-wrap::-webkit-scrollbar { width: 0; height: 0; display: none; }
     `;
     document.head.appendChild(style);
@@ -471,7 +471,7 @@ export default function App() {
             <Btn onClick={handleLogout} style={{ fontSize:11, padding:"5px 10px" }}>로그아웃</Btn>
           </div>
         )}
-        <main style={{ padding:isMobile?"16px":"32px", paddingBottom:isMobile?80:40, boxSizing:"border-box", width:"100%", minWidth:0 }}>
+        <main style={{ padding:isMobile?"0 16px 16px":"0 32px 32px", paddingBottom:isMobile?80:40, boxSizing:"border-box", width:"100%", minWidth:0 }}>
           {/* 
             성능 최적화: 조건부 렌더링({view==="x" && ...}) 대신 display:none으로 숨김.
             메뉴 전환 시 이미 마운트된 컴포넌트는 state를 유지한 채 즉시 표시.
@@ -1144,7 +1144,10 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
 
   return (
     <div>
-      <div style={{marginBottom:14}}>
+      {/* ── 고정 툴바 영역: 스크롤해도 항상 상단에 표시 ── */}
+      <div style={{position:"sticky",top:0,zIndex:30,background:"#f8fafc",
+        padding:"20px 0 8px",marginBottom:6,
+        borderBottom:"1px solid #e2e8f0"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:12}}>
           <h2 style={{margin:0,fontSize:20}}>하드웨어 <span style={{fontSize:13,color:"#64748b",fontWeight:500}}>전체 {data.length}건{filtered.length!==data.length?` · 필터 ${filtered.length}건`:""}{selectedIds.size>0?` · 선택 ${selectedIds.size}건`:""}</span></h2>
           <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
@@ -1210,10 +1213,8 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
           </select>
           {(searchText||filterStatus||filterType||filterClinic!=="all") && <Btn onClick={()=>{setSearchText("");setFilterStatus("");setFilterType("");setFilterClinic("all");}}>초기화</Btn>}
         </div>
-      </div>
-
-      {/* 페이지 크기 + 페이지네이션 */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
+        {/* 페이지 크기 + 페이지네이션 */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:8,flexWrap:"wrap",gap:8}}>
         <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"#64748b"}}>
           <span>페이지당</span>
           <select value={pageSize} onChange={e=>{const v=Number(e.target.value);setPageSize(v);setCurrentPage(1);try{localStorage.setItem(hwPageSizeKey,v);}catch{}}}
@@ -1236,7 +1237,8 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
             <Btn onClick={()=>setCurrentPage(totalPages)} disabled={currentPage===totalPages} style={{padding:"5px 10px",fontSize:12}}>»</Btn>
           </div>
         )}
-      </div>
+        </div>{/* 페이지네이션 끝 */}
+      </div>{/* sticky 툴바 끝 */}
       <ResponsiveTable cols={activeCols} rows={pagedRows} empty="등록된 자산이 없습니다."
         onRowDoubleClick={(row)=>{setDetailItem(row);setModal("detail");}} />
 
@@ -1707,8 +1709,11 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
 
   return (
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:12}}>
-        <h2 style={{margin:0,fontSize:20}}>소프트웨어 <span style={{fontSize:13,color:"#64748b",fontWeight:500}}>전체 {data.length}건{filtered.length!==data.length?` · 필터 ${filtered.length}건`:""}{selectedIds.size>0?` · 선택 ${selectedIds.size}건`:""}</span></h2>
+      {/* ── 고정 툴바 영역 ── */}
+      <div style={{position:"sticky",top:0,zIndex:30,background:"#f8fafc",
+        padding:"20px 0 8px",marginBottom:6,borderBottom:"1px solid #e2e8f0"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:12}}>
+          <h2 style={{margin:0,fontSize:20}}>소프트웨어 <span style={{fontSize:13,color:"#64748b",fontWeight:500}}>전체 {data.length}건{filtered.length!==data.length?` · 필터 ${filtered.length}건`:""}{selectedIds.size>0?` · 선택 ${selectedIds.size}건`:""}</span></h2>
         <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
           <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleImport} style={{display:"none"}}/>
           <Btn onClick={()=>fileInputRef.current?.click()} disabled={importLoading}>{importLoading?"가져오는 중...":"📂 가져오기"}</Btn>
@@ -1768,9 +1773,9 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
           <option value="">카테고리 전체</option>
           {Object.entries(SW_CATEGORIES).map(([k,v])=><option key={k} value={k}>{v}</option>)}
         </select>
-        {(search||filterClinic!=="all"||filterStatus||filterCat)&&<Btn onClick={()=>{setSearch("");setFilterClinic("all");setFilterStatus("");setFilterCat("");}}>초기화</Btn>}
-      </div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
+          {(search||filterClinic!=="all"||filterStatus||filterCat)&&<Btn onClick={()=>{setSearch("");setFilterClinic("all");setFilterStatus("");setFilterCat("");}}>초기화</Btn>}
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:8,flexWrap:"wrap",gap:8}}>
         <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"#64748b"}}>
           <span>페이지당</span>
           <select value={pageSize} onChange={e=>{const v=Number(e.target.value);setPageSize(v);setCurrentPage(1);try{localStorage.setItem(swPageSizeKey,v);}catch{}}}
@@ -1791,8 +1796,9 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
             <Btn onClick={()=>setCurrentPage(p=>p+1)}     disabled={currentPage===totalPages} style={{padding:"5px 10px",fontSize:12}}>›</Btn>
             <Btn onClick={()=>setCurrentPage(totalPages)} disabled={currentPage===totalPages} style={{padding:"5px 10px",fontSize:12}}>»</Btn>
           </div>
-        )}
-      </div>
+          )}
+        </div>{/* 페이지네이션 끝 */}
+      </div>{/* sticky 툴바 끝 */}
       <ResponsiveTable cols={activeSWCols} rows={pagedRows} empty="등록된 소프트웨어가 없습니다."
         onRowDoubleClick={(row)=>{setForm({...row});setModal("detail");}}/>
       {modal==="detail"&&(
@@ -2024,11 +2030,14 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
 
   return (
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-        <h2 style={{margin:0,fontSize:20}}>사용자 계정 ({users.length}명)</h2>
-        {isAdmin && <Btn onClick={()=>{setForm({role:"user"});setModal("add");}} variant="primary">+ 계정 등록</Btn>}
+      <div style={{position:"sticky",top:0,zIndex:30,background:"#f8fafc",
+        padding:"20px 0 8px",marginBottom:6,borderBottom:"1px solid #e2e8f0"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <h2 style={{margin:0,fontSize:20}}>사용자 계정 ({users.length}명)</h2>
+          {isAdmin && <Btn onClick={()=>{setForm({role:"user"});setModal("add");}} variant="primary">+ 계정 등록</Btn>}
+        </div>
+        {pageSizeUI}
       </div>
-      {pageSizeUI}
       <ResponsiveTable
         cols={[
           { label:"번호",       minWidth:80,  sortVal:u=>u.usernum||"", render:u=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{u.usernum||"-"}</span> },
@@ -2138,16 +2147,18 @@ function HistorySection({ history, historyCount, currentUser }) {
 
   return (
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <h2 style={{margin:0}}>활동 로그</h2>
-        <span style={{fontSize:13,color:"#64748b"}}>
-          전체 <b style={{color:"#0f6e56"}}>{totalCount}</b>건
-          {(query||filterCat!=="all"||filterAction) && ` · 검색 ${filtered.length}건`}
-        </span>
-      </div>
+      <div style={{position:"sticky",top:0,zIndex:30,background:"#f8fafc",
+        padding:"20px 0 8px",marginBottom:6,borderBottom:"1px solid #e2e8f0"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <h2 style={{margin:0}}>활동 로그</h2>
+          <span style={{fontSize:13,color:"#64748b"}}>
+            전체 <b style={{color:"#0f6e56"}}>{totalCount}</b>건
+            {(query||filterCat!=="all"||filterAction) && ` · 검색 ${filtered.length}건`}
+          </span>
+        </div>
 
-      {/* 카테고리 탭 */}
-      <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+        {/* 카테고리 탭 */}
+        <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
         {Object.entries(HISTORY_CATEGORIES).map(([k,v])=>{
           const cnt = k==="all" ? totalCount : (catCounts[k]||0);
           if(k!=="all" && cnt===0) return null;
@@ -2185,12 +2196,12 @@ function HistorySection({ history, historyCount, currentUser }) {
           {query&&<button onClick={()=>setQuery("")}
             style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"#94a3b8"}}>✕</button>}
         </div>
-        {(query||filterCat!=="all"||filterAction) &&
-          <Btn onClick={()=>{setQuery("");setFilterCat("all");setFilterAction("");}}>초기화</Btn>}
-      </div>
+          {(query||filterCat!=="all"||filterAction) &&
+            <Btn onClick={()=>{setQuery("");setFilterCat("all");setFilterAction("");}}>초기화</Btn>}
+        </div>
 
-      {/* 페이지당 개수 + 페이지네이션 */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
+        {/* 페이지당 개수 + 페이지네이션 */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:6,flexWrap:"wrap",gap:8}}>
         <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"#64748b"}}>
           <span>페이지당</span>
           <select value={pageSize} onChange={e=>{const v=Number(e.target.value);setPageSize(v);setCurrentPage(1);try{localStorage.setItem(histPageSizeKey,v);}catch{}}}
@@ -2211,8 +2222,9 @@ function HistorySection({ history, historyCount, currentUser }) {
             <Btn onClick={()=>setCurrentPage(p=>p+1)}     disabled={currentPage===totalPages} style={{padding:"5px 10px",fontSize:12}}>›</Btn>
             <Btn onClick={()=>setCurrentPage(totalPages)} disabled={currentPage===totalPages} style={{padding:"5px 10px",fontSize:12}}>»</Btn>
           </div>
-        )}
-      </div>
+          )}
+        </div>{/* 페이지네이션 끝 */}
+      </div>{/* sticky 툴바 끝 */}
 
       <ResponsiveTable
         cols={[
@@ -3139,9 +3151,19 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  // 가상 스크롤 가시 높이 — window 기준 (실제 보이는 행 수 계산용)
+  // 테이블 컨테이너의 실제 위치 기반으로 maxBodyH 동적 계산
+  // → 어느 섹션에 배치되든 툴바 높이 자동 반영
+  const tableContainerRef = useRef(null);
   useEffect(() => {
-    const calc = () => setMaxBodyH(window.innerHeight * 0.7);
+    const calc = () => {
+      if(tableContainerRef.current) {
+        const rect = tableContainerRef.current.getBoundingClientRect();
+        // 화면 하단까지 남은 공간 - 스크롤바(12px) - 하단여백(8px)
+        setMaxBodyH(Math.max(200, window.innerHeight - rect.top - 12 - 8));
+      } else {
+        setMaxBodyH(window.innerHeight - 56 - 140 - 44 - 20);
+      }
+    };
     calc();
     window.addEventListener("resize", calc);
     return () => window.removeEventListener("resize", calc);
@@ -3189,7 +3211,10 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
 
   // wrapRef 스크롤 → 커스텀 가로 스크롤바 동기화
   const handleInnerScroll = useCallback(() => { syncThumb(); }, [syncThumb]);
-  const handleWrapScroll  = useCallback(() => { syncThumb(); }, [syncThumb]);
+  const handleWrapScroll  = useCallback(() => {
+    syncThumb();
+    if(wrapRef.current) setScrollTop(wrapRef.current.scrollTop);
+  }, [syncThumb]);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -3257,7 +3282,7 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
   const bodyH = maxBodyH;
 
   return (
-    <div style={{background:"#fff",borderRadius:14,border:"1px solid #eee",
+    <div ref={tableContainerRef} style={{background:"#fff",borderRadius:14,border:"1px solid #eee",
       display:"flex",flexDirection:"column",position:"relative"}}>
 
       {/*
@@ -3282,8 +3307,10 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
         onScroll={handleWrapScroll}
         style={{
           overflowX: "auto",
-          overflowY: "hidden",
+          overflowY: "auto",
+          maxHeight: bodyH,
           borderRadius: "14px 14px 0 0",
+          scrollbarWidth: "none",
         }}>
 
         {/* 헤더 — sticky로 wrapRef 안에서 세로 고정, 가로는 wrapRef가 자동 동기화 */}
@@ -3392,10 +3419,10 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
         </div>
       )}
 
-      {/* 커스텀 가로 스크롤바 — 항상 하단에 표시, 세로 스크롤바 우측에 고정 */}
+      {/* 커스텀 가로 스크롤바 — sticky로 테이블 하단에 항상 표시 */}
       <div ref={trackRef}
         style={{height:12,background:"#f1f5f9",borderTop:"1px solid #e2e8f0",
-          borderRadius:"0 0 14px 14px",cursor:"pointer",position:"relative"}}
+          borderRadius:"0 0 14px 14px",cursor:"pointer",position:"sticky",bottom:0,zIndex:11}}
         onClick={e=>{
           const el=wrapRef.current; const tr=trackRef.current; const th=thumbRef.current;
           if(!el||!tr||!th) return;
