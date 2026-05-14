@@ -1218,7 +1218,7 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
         const t = Array.isArray(added) ? added[0] : added;
         return api.deleteSW(item.id).then(() => t);
       })
-      .then(t => {
+      .then(async t => {
         setSw(prev=>prev.filter(s=>s.id!==item.id));
         if(t && Object.keys(t).length > 0) setTrash(prev=>[...prev,t]);
         await addHistory("소프트웨어 삭제","software",item.id,item.name,"휴지통 이동",JSON.stringify(item),"");
