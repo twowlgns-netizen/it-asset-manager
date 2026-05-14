@@ -3104,7 +3104,7 @@ function ResizeHandle({ onResize, onDoubleClick }) {
 // ── 가상 스크롤 상수
 const VIRT_ROW_H = 40;
 const VIRT_OVERSCAN = 8;
-const VIRT_THRESHOLD = 200; // 이 행 수 이상일 때 가상 스크롤 적용
+const VIRT_THRESHOLD = 200;
 
 function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowDoubleClick}){
   const calcW = (c) => {
@@ -3118,16 +3118,15 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
   const [sortDir,     setSortDir]     = useState("asc");
   const [ctxMenu,     setCtxMenu]     = useState(null);
   const [scrollTop,   setScrollTop]   = useState(0);
+  const [maxBodyH,    setMaxBodyH]    = useState(600);
 
-  // ── refs
-  // outerRef: 헤더+바디를 감싸는 공통 컨테이너 (가로 스크롤 소스)
-  const outerRef  = useRef(null);
-  // bodyRef:  바디 전용 스크롤 컨테이너 (세로 스크롤)
-  const bodyRef   = useRef(null);
+  // refs
+  const wrapRef   = useRef(null); // 전체 래퍼 (세로 스크롤 담당, 우측 고정)
+  const innerRef  = useRef(null); // 가로 스크롤 담당 (헤더+바디 공통)
+  const headerRef = useRef(null); // 헤더 가로 동기화
   const ctxRef    = useRef(null);
-  const thumbRef  = useRef(null);
-  const trackRef  = useRef(null);
-  const headerRef = useRef(null); // 헤더 table 감싸는 div
+  const thumbRef  = useRef(null); // 커스텀 가로 스크롤 thumb
+  const trackRef  = useRef(null); // 커스텀 가로 스크롤 track
 
   const useVirtual = rows.length >= VIRT_THRESHOLD;
 
@@ -3139,6 +3138,21 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
     const h = (e) => { if(ctxRef.current && !ctxRef.current.contains(e.target)) setCtxMenu(null); };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  // 뷰포트 높이 계산 (부모 컨테이너 기준)
+  useEffect(() => {
+    const el = wrapRef.current;
+    if(!el) return;
+    const calc = () => {
+      // 화면 높이에서 헤더/필터/페이지네이션 영역 제외
+      const rect = el.getBoundingClientRect();
+      const available = window.innerHeight - rect.top - 60;
+      setMaxBodyH(Math.max(200, Math.min(available, 700)));
+    };
+    calc();
+    window.addEventListener("resize", calc);
+    return () => window.removeEventListener("resize", calc);
   }, []);
 
   // 정렬
@@ -3161,63 +3175,58 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
   // 가상 스크롤 범위
   const totalHeight   = sortedRows.length * VIRT_ROW_H;
   const startIdx      = useVirtual ? Math.max(0, Math.floor(scrollTop / VIRT_ROW_H) - VIRT_OVERSCAN) : 0;
-  const endIdx        = useVirtual ? Math.min(sortedRows.length, Math.ceil((scrollTop + 600) / VIRT_ROW_H) + VIRT_OVERSCAN) : sortedRows.length;
+  const endIdx        = useVirtual ? Math.min(sortedRows.length, Math.ceil((scrollTop + maxBodyH) / VIRT_ROW_H) + VIRT_OVERSCAN) : sortedRows.length;
   const visibleRows   = sortedRows.slice(startIdx, endIdx);
   const paddingTop    = startIdx * VIRT_ROW_H;
-  const paddingBottom = (sortedRows.length - endIdx) * VIRT_ROW_H;
+  const paddingBottom = Math.max(0, (sortedRows.length - endIdx) * VIRT_ROW_H);
 
   const totalWidth = colWidths.reduce((a,b)=>a+b,0);
 
-  // ── 커스텀 가로 스크롤바 동기화
-  // outerRef(가로 스크롤 소스)와 커스텀 스크롤바 thumb을 동기화
+  // ── 커스텀 가로 스크롤바 (innerRef 기준)
   const syncThumb = useCallback(() => {
-    const el = outerRef.current; const tr = trackRef.current; const th = thumbRef.current;
+    const el = innerRef.current; const tr = trackRef.current; const th = thumbRef.current;
     if(!el||!tr||!th) return;
-    const ratio = el.clientWidth / el.scrollWidth;
-    const thumbW = Math.max(40, tr.clientWidth * ratio);
-    const maxScroll = el.scrollWidth - el.clientWidth;
-    const maxThumb  = tr.clientWidth - thumbW;
+    const ratio    = el.clientWidth / el.scrollWidth;
+    const thumbW   = Math.max(40, tr.clientWidth * ratio);
+    const maxSc    = el.scrollWidth - el.clientWidth;
+    const maxTh    = tr.clientWidth - thumbW;
     th.style.width = thumbW + "px";
-    th.style.left  = (maxScroll > 0 ? (el.scrollLeft / maxScroll) * maxThumb : 0) + "px";
+    th.style.left  = (maxSc > 0 ? (el.scrollLeft / maxSc) * maxTh : 0) + "px";
     tr.style.display = ratio >= 1 ? "none" : "block";
   }, []);
 
-  // outerRef 가로 스크롤 → 헤더도 함께 이동
-  const handleOuterScroll = useCallback(() => {
+  // innerRef 가로 스크롤 → 헤더 동기화
+  const handleInnerScroll = useCallback(() => {
+    if(headerRef.current && innerRef.current)
+      headerRef.current.scrollLeft = innerRef.current.scrollLeft;
     syncThumb();
-    // 헤더와 바디의 scrollLeft를 항상 outerRef와 동기화
-    if(headerRef.current) headerRef.current.scrollLeft = outerRef.current?.scrollLeft ?? 0;
-    if(bodyRef.current)   bodyRef.current.scrollLeft   = outerRef.current?.scrollLeft ?? 0;
   }, [syncThumb]);
 
   useEffect(() => {
-    const el = outerRef.current;
+    const el = innerRef.current;
     if(!el) return;
     syncThumb();
-    el.addEventListener("scroll", handleOuterScroll);
+    el.addEventListener("scroll", handleInnerScroll);
     const ro = new ResizeObserver(syncThumb);
     ro.observe(el);
-    return () => { el.removeEventListener("scroll", handleOuterScroll); ro.disconnect(); };
-  }, [totalWidth, syncThumb, handleOuterScroll]);
+    return () => { el.removeEventListener("scroll", handleInnerScroll); ro.disconnect(); };
+  }, [totalWidth, syncThumb, handleInnerScroll]);
 
   const startThumbDrag = (e) => {
     e.preventDefault();
-    const el = outerRef.current; const tr = trackRef.current; const th = thumbRef.current;
+    const el = innerRef.current; const tr = trackRef.current; const th = thumbRef.current;
     if(!el||!tr||!th) return;
     const startX = e.clientX, startLeft = el.scrollLeft;
     const trackW = tr.clientWidth, thumbW = th.offsetWidth;
-    const maxScroll = el.scrollWidth - el.clientWidth;
-    const onMove = (mv) => {
-      el.scrollLeft = Math.max(0, Math.min(maxScroll, startLeft + (mv.clientX-startX)/(trackW-thumbW)*maxScroll));
-    };
-    const onUp = () => { window.removeEventListener("mousemove",onMove); window.removeEventListener("mouseup",onUp); };
+    const maxSc  = el.scrollWidth - el.clientWidth;
+    const onMove = mv => { el.scrollLeft = Math.max(0, Math.min(maxSc, startLeft + (mv.clientX-startX)/(trackW-thumbW)*maxSc)); };
+    const onUp   = () => { window.removeEventListener("mousemove",onMove); window.removeEventListener("mouseup",onUp); };
     window.addEventListener("mousemove",onMove); window.addEventListener("mouseup",onUp);
   };
 
-  // 바디 세로 스크롤 → 가상 스크롤 업데이트 + 가로는 outerRef로 전달
-  const handleBodyScroll = useCallback((e) => {
+  // wrapRef 세로 스크롤 → 가상 스크롤 업데이트
+  const handleWrapScroll = useCallback((e) => {
     setScrollTop(e.currentTarget.scrollTop);
-    // 바디의 가로 스크롤을 outerRef에 동기화 (바디는 overflow-x:hidden이므로 실질적으론 0)
   }, []);
 
   const handleColHeaderClick = (i) => {
@@ -3228,7 +3237,6 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
     else { setSortKey(i); setSortDir("asc"); }
     setCtxMenu(null);
   };
-
   const handleColHeaderRightClick = (e, i) => {
     const col = cols[i];
     if(!col || typeof col.label === "function" || col.noClip) return;
@@ -3236,140 +3244,135 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
     e.preventDefault();
     setCtxMenu({ x: e.clientX, y: e.clientY, colIdx: i });
   };
-
   const autoFitCol = (i) => {
     const col = cols[i];
     if(!col) return;
     const lbl = typeof col.label === "function" ? "" : (col.label || "");
     const labelW = [...lbl].reduce((a,ch)=>a+(ch.charCodeAt(0)>127?14:8),0) + 52;
-    let maxContentW = labelW;
-    if(col.key) {
-      rows.slice(0, 200).forEach(row => {
-        const val = String(row[col.key] ?? "");
-        const w = [...val].reduce((a,ch)=>a+(ch.charCodeAt(0)>127?14:8),0) + 32;
-        if(w > maxContentW) maxContentW = w;
-      });
-    }
-    setColWidths(prev => { const next=[...prev]; next[i]=Math.min(Math.max(maxContentW,60),500); return next; });
+    let maxW = labelW;
+    if(col.key) rows.slice(0,200).forEach(row=>{
+      const w = [...String(row[col.key]??"")].reduce((a,ch)=>a+(ch.charCodeAt(0)>127?14:8),0)+32;
+      if(w>maxW) maxW=w;
+    });
+    setColWidths(prev => { const n=[...prev]; n[i]=Math.min(Math.max(maxW,60),500); return n; });
   };
-
   const handleResize = (i, delta) => {
-    setColWidths(prev => { const next=[...prev]; next[i]=Math.max(50,next[i]+delta); return next; });
+    setColWidths(prev => { const n=[...prev]; n[i]=Math.max(50,n[i]+delta); return n; });
   };
 
-  const rowBg = (ri, isSelected) => isSelected ? "#d1fae5" : (ri%2===0 ? "#ffffff" : "#f8fafc");
+  const rowBg = (ri, sel) => sel ? "#d1fae5" : (ri%2===0 ? "#fff" : "#f8fafc");
   const sortIndicator = (i) => {
     const col = cols[i];
-    if(!col || col.noClip || (!col.key && !col.sortVal)) return null;
-    if(sortKey !== i) return <span style={{color:"#d1d5db",fontSize:9,marginLeft:3}}>⇅</span>;
+    if(!col||col.noClip||(!col.key&&!col.sortVal)) return null;
+    if(sortKey!==i) return <span style={{color:"#d1d5db",fontSize:9,marginLeft:3}}>⇅</span>;
     return <span style={{color:"#0f6e56",fontSize:9,marginLeft:3}}>{sortDir==="asc"?"▲":"▼"}</span>;
   };
-
-  // ── 공통 colgroup
   const Colgroup = () => <colgroup>{colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}</colgroup>;
 
+  // 바디 실제 높이: 행 수가 적으면 딱 맞게, 많으면 maxBodyH 고정
+  const bodyH = useVirtual
+    ? maxBodyH
+    : Math.min(sortedRows.length * VIRT_ROW_H + 2, maxBodyH);
+
   return (
-    <div style={{background:"#fff",borderRadius:14,border:"1px solid #eee",display:"flex",flexDirection:"column",position:"relative"}}>
+    <div style={{background:"#fff",borderRadius:14,border:"1px solid #eee",
+      display:"flex",flexDirection:"column",position:"relative"}}>
+
+      <style>{`
+        .rt-wrap::-webkit-scrollbar { width: 8px; }
+        .rt-wrap::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 0 14px 0 0; }
+        .rt-wrap::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
+        .rt-wrap::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        .rt-inner::-webkit-scrollbar { display: none; }
+      `}</style>
 
       {/*
-        ┌─────────────────────────────────────────────┐
-        │  outerRef: 가로 스크롤 마스터 (스크롤바 숨김) │
-        │  ┌─────────────────────────────────────────┐ │
-        │  │ headerRef: 헤더 (overflow:hidden, 좌우이동)│ │
-        │  └─────────────────────────────────────────┘ │
-        │  ┌─────────────────────────────────────────┐ │
-        │  │ bodyRef:  바디 (overflow-y:auto → 세로)  │ │
-        │  └─────────────────────────────────────────┘ │
+        ┌──────────────────────────────────────────┬───┐
+        │  헤더 (가로 스크롤 동기화, overflow:hidden) │   │ ← 세로 스크롤바
+        ├──────────────────────────────────────────┤   │    항상 여기 고정
+        │  바디 (가로 스크롤, overflow-x:auto)       │   │
+        └──────────────────────────────────────────┴───┘
+        │  커스텀 가로 스크롤바                           │
         └─────────────────────────────────────────────┘
-        커스텀 가로 스크롤바 (outerRef 기반, 하나만)
+
+        wrapRef: 세로 스크롤 전담 (우측에 스크롤바 항상 고정)
+        innerRef: 가로 스크롤 전담 (스크롤바 숨김, 커스텀으로 대체)
       */}
 
-      {/* ── 가로 스크롤 마스터 컨테이너 (스크롤바 숨김) */}
-      <div ref={outerRef}
-        onScroll={handleOuterScroll}
-        style={{overflowX:"auto", overflowY:"hidden", scrollbarWidth:"none", msOverflowStyle:"none"}}>
-        <style>{`
-          .rt-outer::-webkit-scrollbar { display:none; }
-          .rt-body::-webkit-scrollbar { width:8px; }
-          .rt-body::-webkit-scrollbar-track { background:#f1f5f9; }
-          .rt-body::-webkit-scrollbar-thumb { background:#94a3b8; border-radius:4px; }
-          .rt-body::-webkit-scrollbar-thumb:hover { background:#64748b; }
-        `}</style>
+      {/* 세로 스크롤 래퍼 — 우측 스크롤바 항상 표시, 가로 스크롤 없음 */}
+      <div ref={wrapRef}
+        className="rt-wrap"
+        onScroll={handleWrapScroll}
+        style={{
+          overflowX: "hidden",
+          overflowY: "auto",
+          maxHeight: bodyH + 44, // 헤더(44px) + 바디
+          borderRadius: "14px 14px 0 0",
+        }}>
 
-        {/* ── 헤더: 가로 스크롤 따라 움직임, 세로 고정 */}
-        <div ref={headerRef} style={{overflowX:"hidden", overflowY:"hidden", width:totalWidth}}>
-          <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:totalWidth,minWidth:totalWidth}}>
-            <Colgroup/>
-            <thead>
-              <tr style={{background:"linear-gradient(180deg,#f1f5f9 0%,#e8eef4 100%)"}}>
-                {cols.map((c,i)=>{
-                  const isSortable = typeof c.label !== "function" && !c.noClip;
-                  return (
-                    <th key={i}
-                      onClick={()=>handleColHeaderClick(i)}
-                      onContextMenu={(e)=>handleColHeaderRightClick(e,i)}
-                      style={{padding:i===0?"10px 4px":"12px 12px",textAlign:i===0?"center":"left",
-                        fontSize:11,color:"#475569",borderBottom:"2px solid #e2e8f0",
-                        borderRight:"1px solid #e8eef4",whiteSpace:"nowrap",fontWeight:700,
-                        position:"relative",userSelect:"none",overflow:"visible",
-                        boxSizing:"border-box",cursor:isSortable?"pointer":"default"}}>
-                      <span style={{display:"flex",alignItems:"center",gap:2,overflow:"hidden",paddingRight:i===0?0:8}}>
-                        <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{typeof c.label==="function"?c.label():c.label}</span>
-                        {isSortable && sortIndicator(i)}
-                      </span>
-                      <ResizeHandle onResize={delta=>handleResize(i,delta)} onDoubleClick={()=>autoFitCol(i)}/>
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-          </table>
+        {/* 헤더 — 가로 스크롤 동기화만, 실제 스크롤은 innerRef */}
+        <div style={{position:"sticky",top:0,zIndex:10,background:"#fff",overflow:"hidden"}}>
+          <div ref={headerRef} style={{overflowX:"hidden",overflowY:"hidden"}}>
+            <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:totalWidth,minWidth:totalWidth}}>
+              <Colgroup/>
+              <thead>
+                <tr style={{background:"linear-gradient(180deg,#f1f5f9 0%,#e8eef4 100%)"}}>
+                  {cols.map((c,i)=>{
+                    const isSortable = typeof c.label!=="function" && !c.noClip;
+                    return (
+                      <th key={i}
+                        onClick={()=>handleColHeaderClick(i)}
+                        onContextMenu={(e)=>handleColHeaderRightClick(e,i)}
+                        style={{padding:i===0?"10px 4px":"12px 12px",textAlign:i===0?"center":"left",
+                          fontSize:11,color:"#475569",borderBottom:"2px solid #e2e8f0",
+                          borderRight:"1px solid #e8eef4",whiteSpace:"nowrap",fontWeight:700,
+                          position:"relative",userSelect:"none",overflow:"visible",
+                          boxSizing:"border-box",cursor:isSortable?"pointer":"default"}}>
+                        <span style={{display:"flex",alignItems:"center",gap:2,overflow:"hidden",paddingRight:i===0?0:8}}>
+                          <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{typeof c.label==="function"?c.label():c.label}</span>
+                          {isSortable && sortIndicator(i)}
+                        </span>
+                        <ResizeHandle onResize={d=>handleResize(i,d)} onDoubleClick={()=>autoFitCol(i)}/>
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+            </table>
+          </div>
         </div>
 
-        {/* ── 바디: 세로 스크롤 (우측 스크롤바 표시) + 가로는 outerRef 따라감 */}
-        <div ref={bodyRef}
-          className="rt-body"
-          onScroll={handleBodyScroll}
-          style={{
-            overflowX:"hidden",  // 가로는 outerRef가 담당
-            overflowY:"auto",    // 세로 스크롤바 항상 표시
-            maxHeight: useVirtual ? 600 : 70*Math.min(sortedRows.length, 20) + 10,
-            width: totalWidth,
-          }}>
+        {/* 바디 — 가로 스크롤 전담 (세로는 wrapRef가 처리) */}
+        <div ref={innerRef}
+          className="rt-inner"
+          onScroll={handleInnerScroll}
+          style={{overflowX:"auto", overflowY:"hidden"}}>
           {sortedRows.length === 0
-            ? <div style={{padding:40,textAlign:"center",color:"#94a3b8",width:totalWidth}}>{empty}</div>
+            ? <div style={{padding:40,textAlign:"center",color:"#94a3b8",minWidth:totalWidth}}>{empty}</div>
             : (
               <>
-                {useVirtual && <div style={{height:paddingTop}}/>}
+                {useVirtual && paddingTop > 0 && <div style={{height:paddingTop, minWidth:totalWidth}}/>}
                 <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:totalWidth,minWidth:totalWidth}}>
                   <Colgroup/>
                   <tbody>
                     {visibleRows.map((row, vi) => {
                       const ri = startIdx + vi;
-                      const isSelected = selectedRow === ri;
+                      const isSel = selectedRow === ri;
                       return (
                         <tr key={ri}
-                          style={{
-                            borderBottom:"1px solid #f0f4f8",
-                            background: rowBg(ri, isSelected),
-                            cursor: onRowDoubleClick ? "pointer" : "default",
-                            height: VIRT_ROW_H,
-                          }}
-                          onClick={()=>setSelectedRow(isSelected?null:ri)}
-                          onDoubleClick={()=>onRowDoubleClick && onRowDoubleClick(row)}
-                          onMouseEnter={e=>{ if(!isSelected) e.currentTarget.style.background="#eff6ff"; }}
-                          onMouseLeave={e=>{ e.currentTarget.style.background=rowBg(ri,isSelected); }}>
+                          style={{borderBottom:"1px solid #f0f4f8",background:rowBg(ri,isSel),
+                            cursor:onRowDoubleClick?"pointer":"default",height:VIRT_ROW_H}}
+                          onClick={()=>setSelectedRow(isSel?null:ri)}
+                          onDoubleClick={()=>onRowDoubleClick&&onRowDoubleClick(row)}
+                          onMouseEnter={e=>{ if(!isSel) e.currentTarget.style.background="#eff6ff"; }}
+                          onMouseLeave={e=>{ e.currentTarget.style.background=rowBg(ri,isSel); }}>
                           {cols.map((c,ci)=>(
-                            <td key={ci} style={{
-                              padding:ci===0?"9px 4px":"11px 12px",fontSize:13,
-                              textAlign:ci===0?"center":"left",
+                            <td key={ci} style={{padding:ci===0?"9px 4px":"11px 12px",fontSize:13,
+                              textAlign:ci===0?"center":"left",height:VIRT_ROW_H,
                               overflow:c.noClip?"visible":"hidden",
                               textOverflow:c.noClip?"unset":"ellipsis",
                               whiteSpace:c.noClip?"normal":"nowrap",
-                              borderRight:"1px solid #f0f4f8",
-                              boxSizing:"border-box",
-                              height:VIRT_ROW_H,
-                            }}>
+                              borderRight:"1px solid #f0f4f8",boxSizing:"border-box"}}>
                               {c.render?c.render(row,ri,sortedRows):row[c.key]}
                             </td>
                           ))}
@@ -3378,7 +3381,7 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
                     })}
                   </tbody>
                 </table>
-                {useVirtual && <div style={{height:paddingBottom}}/>}
+                {useVirtual && paddingBottom > 0 && <div style={{height:paddingBottom, minWidth:totalWidth}}/>}
               </>
             )
           }
@@ -3387,13 +3390,14 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
 
       {/* 우클릭 컨텍스트 메뉴 */}
       {ctxMenu && (
-        <div ref={ctxRef} style={{position:"fixed",left:ctxMenu.x,top:ctxMenu.y,background:"#fff",border:"1px solid #e2e8f0",
-          borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",zIndex:9999,minWidth:160,overflow:"hidden"}}>
+        <div ref={ctxRef} style={{position:"fixed",left:ctxMenu.x,top:ctxMenu.y,background:"#fff",
+          border:"1px solid #e2e8f0",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",
+          zIndex:9999,minWidth:160,overflow:"hidden"}}>
           <div style={{padding:"8px 14px",fontSize:11,color:"#94a3b8",borderBottom:"1px solid #f0f0f0",fontWeight:600}}>
-            {typeof cols[ctxMenu.colIdx]?.label === "string" ? cols[ctxMenu.colIdx].label : "정렬"} 정렬
+            {typeof cols[ctxMenu.colIdx]?.label==="string"?cols[ctxMenu.colIdx].label:"정렬"} 정렬
           </div>
           {[{label:"▲ 오름차순 (A→Z)",dir:"asc"},{label:"▼ 내림차순 (Z→A)",dir:"desc"}].map(opt=>(
-            <div key={opt.dir} onClick={()=>{ setSortKey(ctxMenu.colIdx); setSortDir(opt.dir); setCtxMenu(null); }}
+            <div key={opt.dir} onClick={()=>{setSortKey(ctxMenu.colIdx);setSortDir(opt.dir);setCtxMenu(null);}}
               style={{padding:"10px 16px",fontSize:13,cursor:"pointer",
                 background:sortKey===ctxMenu.colIdx&&sortDir===opt.dir?"#e8f5e9":"transparent",
                 color:sortKey===ctxMenu.colIdx&&sortDir===opt.dir?"#0f6e56":"#334155",
@@ -3403,29 +3407,30 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
               {opt.label}
             </div>
           ))}
-          <div onClick={()=>{ setSortKey(null); setCtxMenu(null); }}
+          <div onClick={()=>{setSortKey(null);setCtxMenu(null);}}
             style={{padding:"10px 16px",fontSize:13,cursor:"pointer",color:"#94a3b8",borderTop:"1px solid #f0f0f0"}}
             onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
             onMouseLeave={e=>e.currentTarget.style.background="transparent"}>✕ 정렬 해제</div>
-          <div onClick={()=>{ autoFitCol(ctxMenu.colIdx); setCtxMenu(null); }}
+          <div onClick={()=>{autoFitCol(ctxMenu.colIdx);setCtxMenu(null);}}
             style={{padding:"10px 16px",fontSize:13,cursor:"pointer",color:"#334155",borderTop:"1px solid #f0f0f0"}}
             onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
             onMouseLeave={e=>e.currentTarget.style.background="transparent"}>↔ 너비 자동 맞춤</div>
         </div>
       )}
 
-      {/* ── 커스텀 가로 스크롤바 (outerRef 기반, 하나만) */}
+      {/* 커스텀 가로 스크롤바 — 항상 하단에 표시, 세로 스크롤바 우측에 고정 */}
       <div ref={trackRef}
         style={{height:12,background:"#f1f5f9",borderTop:"1px solid #e2e8f0",
           borderRadius:"0 0 14px 14px",cursor:"pointer",position:"relative"}}
         onClick={e=>{
-          const el=outerRef.current; const tr=trackRef.current; const th=thumbRef.current;
+          const el=innerRef.current; const tr=trackRef.current; const th=thumbRef.current;
           if(!el||!tr||!th) return;
           const rect=tr.getBoundingClientRect();
           el.scrollLeft=(el.scrollWidth-el.clientWidth)*((e.clientX-rect.left)/tr.clientWidth);
         }}>
         <div ref={thumbRef} onMouseDown={startThumbDrag}
-          style={{position:"absolute",top:2,height:8,background:"#94a3b8",borderRadius:4,cursor:"grab",minWidth:40}}
+          style={{position:"absolute",top:2,height:8,background:"#94a3b8",borderRadius:4,
+            cursor:"grab",minWidth:40,transition:"background 0.15s"}}
           onMouseEnter={e=>e.currentTarget.style.background="#64748b"}
           onMouseLeave={e=>e.currentTarget.style.background="#94a3b8"}/>
       </div>
