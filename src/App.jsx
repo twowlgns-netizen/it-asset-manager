@@ -1686,14 +1686,14 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
       </div>
       <ResponsiveTable
         cols={[
-          { label:"번호",    minWidth:80,  render:u=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{u.usernum||"-"}</span> },
+          { label:"번호",    minWidth:80,  sortVal:u=>u.usernum||"", render:u=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{u.usernum||"-"}</span> },
           { label:"아이디",  key:"loginid", minWidth:130 },
           { label:"이름",    key:"name",    minWidth:110 },
           { label:"부서",    key:"dept",    minWidth:130 },
-          { label:"지점",    minWidth:140,  render:u=>CLINICS[u.clinic]||u.clinic||"-" },
-          { label:"권한",    minWidth:120,  render:u=>{ const r={admin:{bg:"#e8f5e9",c:"#0f6e56"},user:{bg:"#eff6ff",c:"#2563eb"},readonly:{bg:"#f1f5f9",c:"#64748b"}}[u.role]||{bg:"#f1f5f9",c:"#64748b"}; return <span style={{background:r.bg,color:r.c,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700}}>{ROLES[u.role]||u.role}</span>; }},
-          { label:"계정생성일", minWidth:120, render:u=>u.created_date||fDate(u.created_at)||"-" },
-          { label:"PW변경일",  minWidth:120, render:u=>u.password_changed_date||"-" },
+          { label:"지점",    minWidth:140,  sortVal:u=>CLINICS[u.clinic]||u.clinic||"", render:u=>CLINICS[u.clinic]||u.clinic||"-" },
+          { label:"권한",    minWidth:120,  sortVal:u=>ROLES[u.role]||u.role||"", render:u=>{ const r={admin:{bg:"#e8f5e9",c:"#0f6e56"},user:{bg:"#eff6ff",c:"#2563eb"},readonly:{bg:"#f1f5f9",c:"#64748b"}}[u.role]||{bg:"#f1f5f9",c:"#64748b"}; return <span style={{background:r.bg,color:r.c,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700}}>{ROLES[u.role]||u.role}</span>; }},
+          { label:"계정생성일", minWidth:120, sortVal:u=>u.created_date||u.created_at||"", render:u=>u.created_date||fDate(u.created_at)||"-" },
+          { label:"PW변경일",  minWidth:120, sortVal:u=>u.password_changed_date||"", render:u=>u.password_changed_date||"-" },
         ]}
         rows={pagedUsers} empty="사용자가 없습니다."
       />
@@ -1770,14 +1770,14 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
       {pageSizeUI}
       <ResponsiveTable
         cols={[
-          { label:"번호",       minWidth:80,  render:u=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{u.usernum||"-"}</span> },
+          { label:"번호",       minWidth:80,  sortVal:u=>u.usernum||"", render:u=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{u.usernum||"-"}</span> },
           { label:"아이디",     key:"loginid", minWidth:130 },
           { label:"이름",       key:"name",    minWidth:110 },
           { label:"부서",       key:"dept",    minWidth:130 },
-          { label:"지점",       minWidth:140,  render:u=>CLINICS[u.clinic]||u.clinic||"-" },
-          { label:"권한",       minWidth:120,  render:u=>{ const r={admin:{bg:"#e8f5e9",c:"#0f6e56"},user:{bg:"#eff6ff",c:"#2563eb"},readonly:{bg:"#f1f5f9",c:"#64748b"}}[u.role]||{bg:"#f1f5f9",c:"#64748b"}; return <span style={{background:r.bg,color:r.c,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700}}>{ROLES[u.role]||u.role}</span>; }},
-          { label:"계정생성일",  minWidth:120,  render:u=>u.created_date||fDate(u.created_at)||"-" },
-          { label:"PW변경일",   minWidth:120,  render:u=>u.password_changed_date||"-" },
+          { label:"지점",       minWidth:140,  sortVal:u=>CLINICS[u.clinic]||u.clinic||"", render:u=>CLINICS[u.clinic]||u.clinic||"-" },
+          { label:"권한",       minWidth:120,  sortVal:u=>ROLES[u.role]||u.role||"", render:u=>{ const r={admin:{bg:"#e8f5e9",c:"#0f6e56"},user:{bg:"#eff6ff",c:"#2563eb"},readonly:{bg:"#f1f5f9",c:"#64748b"}}[u.role]||{bg:"#f1f5f9",c:"#64748b"}; return <span style={{background:r.bg,color:r.c,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700}}>{ROLES[u.role]||u.role}</span>; }},
+          { label:"계정생성일",  minWidth:120,  sortVal:u=>u.created_date||u.created_at||"", render:u=>u.created_date||fDate(u.created_at)||"-" },
+          { label:"PW변경일",   minWidth:120,  sortVal:u=>u.password_changed_date||"", render:u=>u.password_changed_date||"-" },
           { label:"관리",       minWidth:170,  noClip:true, render:u=>isAdmin&&(
             <div style={{display:"flex",gap:5,flexWrap:"nowrap"}}>
               <Btn onClick={()=>{setForm({...u});setModal("edit");}} style={{fontSize:11,padding:"5px 8px"}}>수정</Btn>
@@ -1951,25 +1951,25 @@ function HistorySection({ history, historyCount, currentUser }) {
 
       <ResponsiveTable
         cols={[
-          { label:"번호", minWidth:60, render:(h)=>{
-            // history 배열은 최신순(desc) 정렬 → 처음 등록된 로그가 1번이 되도록 역산
-            // totalCount(DB 전체 건수) - history 내 위치 = 오래된 순 번호
-            const posInHistory = history.findIndex(x=>(x.id&&x.id===h.id)||(x.ts===h.ts&&x.username===h.username));
-            const num = posInHistory >= 0 ? totalCount - posInHistory : "-";
-            return <span style={{color:"#64748b",fontSize:12}}>{num}</span>;
+          { label:"번호", minWidth:60,
+            sortVal: h => { const pos=history.findIndex(x=>(x.id&&x.id===h.id)||(x.ts===h.ts&&x.username===h.username)); return pos>=0?totalCount-pos:0; },
+            render:(h)=>{
+              const posInHistory = history.findIndex(x=>(x.id&&x.id===h.id)||(x.ts===h.ts&&x.username===h.username));
+              const num = posInHistory >= 0 ? totalCount - posInHistory : "-";
+              return <span style={{color:"#64748b",fontSize:12}}>{num}</span>;
           }},
-          { label:"시간",    minWidth:155, render:h=><span style={{fontSize:11,whiteSpace:"nowrap",color:"#64748b"}}>{fDT(h.ts)}</span> },
+          { label:"시간",    minWidth:155, sortVal:h=>h.ts||"",   render:h=><span style={{fontSize:11,whiteSpace:"nowrap",color:"#64748b"}}>{fDT(h.ts)}</span> },
           { label:"수행자",  minWidth:100, key:"username" },
-          { label:"카테고리",minWidth:130, render:h=>{
+          { label:"카테고리",minWidth:130, sortVal:h=>HISTORY_CATEGORIES[h.atype]||h.atype||"", render:h=>{
             const b=CATEGORY_BADGE[h.atype]||{bg:"#f1f5f9",color:"#64748b"};
             return <span style={{background:b.bg,color:b.color,padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
               {HISTORY_CATEGORIES[h.atype]||h.atype||"-"}
             </span>;
           }},
-          { label:"액션",    minWidth:170, render:h=><span style={{background:"#f1f5f9",padding:"2px 8px",borderRadius:10,fontSize:12}}>{h.action}</span> },
+          { label:"액션",    minWidth:170, key:"action", render:h=><span style={{background:"#f1f5f9",padding:"2px 8px",borderRadius:10,fontSize:12}}>{h.action}</span> },
           { label:"대상",    minWidth:130, key:"aname" },
           { label:"상세",    minWidth:240, key:"detail" },
-          { label:"지점",    minWidth:120, render:h=>CLINICS[h.clinic]||h.clinic||"-" },
+          { label:"지점",    minWidth:120, sortVal:h=>CLINICS[h.clinic]||h.clinic||"", render:h=>CLINICS[h.clinic]||h.clinic||"-" },
           { label:"변경내용",minWidth:90,  noClip:true, render:h=>(h.before||h.after)&&(
             <Btn onClick={()=>setShowDetail(h)} style={{fontSize:11,padding:"4px 8px"}}>보기</Btn>
           )},
@@ -2472,15 +2472,33 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
 
       <ResponsiveTable
         cols={[
-          { label:"번호",   minWidth:75, render:(t,ri)=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{`TRS-${filtered.length - filtered.indexOf(t)}`}</span>},
-          { label:"구분",   minWidth:110, render:t=>{ const tb=getTable(t); return <span style={{background:tb==="assets"?"#eff6ff":"#f0fdf4",color:tb==="assets"?"#2563eb":"#0f6e56",padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700}}>{tb==="assets"?"🖥️ 장비":"💿 소프트웨어"}</span>; }},
-          { label:"이름/코드", minWidth:180, render:t=>{ const d=getData(t); return <span style={{fontWeight:600,fontSize:13}}>{d.gccode||d.modelname||d.name||"-"}</span>; }},
-          { label:"모델/버전", minWidth:140, render:t=>{ const d=getData(t); return d.modelname||d.version||"-"; }},
-          { label:"팀/담당",  minWidth:130, render:t=>{ const d=getData(t); return d.team||d.assignedto||"-"; }},
-          { label:"사용자",   minWidth:110, render:t=>{ const d=getData(t); return d.username||"-"; }},
-          { label:"지점",     minWidth:120, render:t=>{ const d=getData(t); return CLINICS[d.clinic]||d.clinic||"-"; }},
-          { label:"상태",     minWidth:110, render:t=>{ const d=getData(t); const sk=d.assetstatus||d.status; const b=STATUS_BADGE[sk]||{bg:"#f1f5f9",color:"#64748b"}; return sk?<span style={{background:b.bg,color:b.color,padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700}}>{ASSET_STATUS[sk]||SW_STATUS[sk]||sk}</span>:"-"; }},
-          { label:"삭제일",   minWidth:155, render:t=>fDT(t.deletedat||t.deletedAt||t.created_at) },
+          { label:"번호",     minWidth:75,
+            sortVal: t => filtered.length - filtered.indexOf(t),
+            render:(t)=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{`TRS-${filtered.length - filtered.indexOf(t)}`}</span>},
+          { label:"구분",     minWidth:110,
+            sortVal: t => getTable(t),
+            render:t=>{ const tb=getTable(t); return <span style={{background:tb==="assets"?"#eff6ff":"#f0fdf4",color:tb==="assets"?"#2563eb":"#0f6e56",padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700}}>{tb==="assets"?"🖥️ 장비":"💿 소프트웨어"}</span>; }},
+          { label:"이름/코드", minWidth:180,
+            sortVal: t=>{ const d=getData(t); return d.gccode||d.modelname||d.name||""; },
+            render:t=>{ const d=getData(t); return <span style={{fontWeight:600,fontSize:13}}>{d.gccode||d.modelname||d.name||"-"}</span>; }},
+          { label:"모델/버전", minWidth:140,
+            sortVal: t=>{ const d=getData(t); return d.modelname||d.version||""; },
+            render:t=>{ const d=getData(t); return d.modelname||d.version||"-"; }},
+          { label:"팀/담당",  minWidth:130,
+            sortVal: t=>{ const d=getData(t); return d.team||d.assignedto||""; },
+            render:t=>{ const d=getData(t); return d.team||d.assignedto||"-"; }},
+          { label:"사용자",   minWidth:110,
+            sortVal: t=>{ const d=getData(t); return d.username||""; },
+            render:t=>{ const d=getData(t); return d.username||"-"; }},
+          { label:"지점",     minWidth:120,
+            sortVal: t=>{ const d=getData(t); return CLINICS[d.clinic]||d.clinic||""; },
+            render:t=>{ const d=getData(t); return CLINICS[d.clinic]||d.clinic||"-"; }},
+          { label:"상태",     minWidth:110,
+            sortVal: t=>{ const d=getData(t); const sk=d.assetstatus||d.status; return ASSET_STATUS[sk]||SW_STATUS[sk]||sk||""; },
+            render:t=>{ const d=getData(t); const sk=d.assetstatus||d.status; const b=STATUS_BADGE[sk]||{bg:"#f1f5f9",color:"#64748b"}; return sk?<span style={{background:b.bg,color:b.color,padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700}}>{ASSET_STATUS[sk]||SW_STATUS[sk]||sk}</span>:"-"; }},
+          { label:"삭제일",   minWidth:155,
+            sortVal: t => t.deletedat||t.deletedAt||t.created_at||"",
+            render:t=>fDT(t.deletedat||t.deletedAt||t.created_at) },
           { label:"관리",     minWidth:260, noClip:true, render:t=>(
             <div style={{display:"flex",gap:5,flexWrap:"nowrap",alignItems:"center"}}>
               <Btn onClick={()=>setDetailItem(t)} style={{fontSize:11,padding:"5px 8px",whiteSpace:"nowrap"}}>🔍 상세</Btn>
@@ -2804,17 +2822,21 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  // 기능5,6: 정렬 처리
+  // 기능5,6: 정렬 처리 — col.key 또는 col.sortVal(row) 함수 지원
   const sortedRows = (() => {
     if(sortKey === null) return rows;
     const col = cols[sortKey];
-    if(!col || col.noClip === true) return rows; // noClip 컬럼(관리 등)은 정렬 불가
-    // key가 있으면 key로 정렬 (render 유무 관계없이)
-    const sortByKey = col.key;
-    if(!sortByKey) return rows;
+    if(!col || col.noClip === true) return rows;
+    // 정렬값 추출: sortVal 함수 우선, 없으면 key로 row 직접 접근
+    const getVal = col.sortVal
+      ? (row) => { try { const v = col.sortVal(row); return v == null ? "" : String(v).toLowerCase(); } catch { return ""; } }
+      : col.key
+      ? (row) => (row[col.key] ?? "").toString().toLowerCase()
+      : null;
+    if(!getVal) return rows; // key도 sortVal도 없으면 정렬 불가
     return [...rows].sort((a, b) => {
-      const av = (a[sortByKey] ?? "").toString().toLowerCase();
-      const bv = (b[sortByKey] ?? "").toString().toLowerCase();
+      const av = getVal(a);
+      const bv = getVal(b);
       const n1 = parseFloat(av), n2 = parseFloat(bv);
       if(!isNaN(n1) && !isNaN(n2)) return sortDir==="asc" ? n1-n2 : n2-n1;
       return sortDir==="asc" ? av.localeCompare(bv,"ko") : bv.localeCompare(av,"ko");
@@ -2823,7 +2845,9 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
 
   const handleColHeaderClick = (i) => {
     const col = cols[i];
-    if(!col || typeof col.label === "function" || col.noClip) return; // 체크박스 컬럼 등 제외
+    // key도 sortVal도 없고 noClip인 컬럼은 정렬 불가
+    if(!col || typeof col.label === "function" || col.noClip) return;
+    if(!col.key && !col.sortVal) return;
     if(sortKey === i) setSortDir(d => d==="asc" ? "desc" : "asc");
     else { setSortKey(i); setSortDir("asc"); }
     setCtxMenu(null);
@@ -2832,6 +2856,7 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
   const handleColHeaderRightClick = (e, i) => {
     const col = cols[i];
     if(!col || typeof col.label === "function" || col.noClip) return;
+    if(!col.key && !col.sortVal) return;
     e.preventDefault();
     setCtxMenu({ x: e.clientX, y: e.clientY, colIdx: i });
   };
@@ -2923,6 +2948,8 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
   };
 
   const sortIndicator = (i) => {
+    const col = cols[i];
+    if(!col || col.noClip || (!col.key && !col.sortVal)) return null; // 정렬 불가 컬럼
     if(sortKey !== i) return <span style={{color:"#d1d5db",fontSize:9,marginLeft:3}}>⇅</span>;
     return <span style={{color:"#0f6e56",fontSize:9,marginLeft:3}}>{sortDir==="asc"?"▲":"▼"}</span>;
   };
