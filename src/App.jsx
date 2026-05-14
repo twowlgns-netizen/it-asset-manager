@@ -314,8 +314,8 @@ export default function App() {
   }, [isLoggedIn, fetchAll]);
 
   const addHistory = useCallback((action, aType, aId, aName, detail, before="", after="") => {
-    if (!currentUser) return;
-    api.addHistory({ ts: nowISO(), action, atype: aType, aid: aId, aname: aName, detail, before, after, username: currentUser.name, userrole: currentUser.role, clinic: currentUser.clinic || "" })
+    if (!currentUser) return Promise.resolve();
+    return api.addHistory({ ts: nowISO(), action, atype: aType, aid: aId, aname: aName, detail, before, after, username: currentUser.name, userrole: currentUser.role, clinic: currentUser.clinic || "" })
       .then(() => Promise.all([
         api.getHistory().then(d => { const l=Array.isArray(d)?d:[]; setHistory(l.sort((a,b)=>new Date(b.ts)-new Date(a.ts))); }),
         api.getHistoryCount().then(n=>setHistoryCount(n)),
@@ -592,7 +592,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
         await api.deleteHW(item.id);
         // ③ UI에 즉시 반영 (페이지 이동 전 휴지통에 보이도록)
         setTrash(prev => [...prev, saved]);
-        addHistory("하드웨어 삭제","hardware",item.id,name,
+        await addHistory("하드웨어 삭제","hardware",item.id,name,
           `선택삭제-휴지통 / 지점:${item.clinic||"-"} / 팀:${item.team||"-"} / 사용자:${item.username||"-"}`,
           JSON.stringify(item),"");
         ok++;
@@ -735,7 +735,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
     for (const { item, patch } of targets) {
       try {
         await api.updateHW(item.id, patch);
-        addHistory(
+        await addHistory(
           "데이터 수정(한글→키 변환)", "hardware", item.id,
           item.gccode||item.modelname||"자산",
           `자동수정: ${Object.entries(patch).map(([k,v])=>`${k}: "${item[k]}"→"${v}"`).join(", ")}`,
@@ -803,13 +803,14 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
       // 파일 전체 요약 로그
       const gcCodes = items.map(it=>it.gccode||it.modelname||it.imedcode||"-").join(", ");
       const summary = `파일명: ${file.name} / ${items.length}건 / GC코드: ${gcCodes.length>200?gcCodes.slice(0,200)+"...":gcCodes}`;
-      addHistory("파일 가져오기","hardware","",`${items.length}건`,summary,"",JSON.stringify(items.map(it=>({num:it.num,gccode:it.gccode,imedcode:it.imedcode,modelname:it.modelname,assetstatus:it.assetstatus,clinic:it.clinic,team:it.team,username:it.username}))));
-      // 항목별 개별 로그
-      items.forEach((it,idx)=>{
+      await addHistory("파일 가져오기","hardware","",`${items.length}건`,summary,"",JSON.stringify(items.map(it=>({num:it.num,gccode:it.gccode,imedcode:it.imedcode,modelname:it.modelname,assetstatus:it.assetstatus,clinic:it.clinic,team:it.team,username:it.username}))));
+      // 항목별 개별 로그 — 순차 await으로 ts 중복 및 번호 충돌 방지
+      for(let idx=0;idx<items.length;idx++){
+        const it=items[idx];
         const name=it.gccode||it.modelname||it.imedcode||`항목${idx+1}`;
         const detail=`파일가져오기 (${file.name}) / 지점:${it.clinic||"-"} / 팀:${it.team||"-"} / 사용자:${it.username||"-"} / 상태:${it.assetstatus||"-"}`;
-        addHistory("장비 등록(가져오기)","hardware","",name,detail,"",JSON.stringify(it));
-      });
+        await addHistory("장비 등록(가져오기)","hardware","",name,detail,"",JSON.stringify(it));
+      }
       alert(`${items.length}건 완료!`);
     } catch(err){ alert("가져오기 실패: "+err.message); }
     finally{ setImportLoading(false); e.target.value=""; }
@@ -1220,7 +1221,7 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
       .then(t => {
         setSw(prev=>prev.filter(s=>s.id!==item.id));
         if(t && Object.keys(t).length > 0) setTrash(prev=>[...prev,t]);
-        addHistory("소프트웨어 삭제","software",item.id,item.name,"휴지통 이동",JSON.stringify(item),"");
+        await addHistory("소프트웨어 삭제","software",item.id,item.name,"휴지통 이동",JSON.stringify(item),"");
       }).catch(err=>alert("삭제 오류: "+err.message));
   };
 
@@ -1285,13 +1286,14 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
       // 파일 전체 요약 로그
       const names = items.map(it=>it.name||"-").join(", ");
       const summary = `파일명: ${file.name} / ${items.length}건 / 소프트웨어: ${names.length>200?names.slice(0,200)+"...":names}`;
-      addHistory("파일 가져오기","software","",`${items.length}건`,summary,"",JSON.stringify(items.map(it=>({name:it.name,category:it.category,vendor:it.vendor,status:it.status,clinic:it.clinic,quantity:it.quantity}))));
-      // 항목별 개별 로그
-      items.forEach((it,idx)=>{
+      await addHistory("파일 가져오기","software","",`${items.length}건`,summary,"",JSON.stringify(items.map(it=>({name:it.name,category:it.category,vendor:it.vendor,status:it.status,clinic:it.clinic,quantity:it.quantity}))));
+      // 항목별 개별 로그 — 순차 await으로 ts 중복 및 번호 충돌 방지
+      for(let idx=0;idx<items.length;idx++){
+        const it=items[idx];
         const name=it.name||`항목${idx+1}`;
         const detail=`파일가져오기 (${file.name}) / 지점:${it.clinic||"-"} / 담당자:${it.assignedto||"-"} / 상태:${it.status||"-"} / 만료일:${it.expirydate||"-"}`;
-        addHistory("소프트웨어 등록(가져오기)","software","",name,detail,"",JSON.stringify(it));
-      });
+        await addHistory("소프트웨어 등록(가져오기)","software","",name,detail,"",JSON.stringify(it));
+      }
       alert(`${items.length}건 완료!`);
     } catch(err){alert("가져오기 실패: "+err.message);}
     finally{setImportLoading(false);e.target.value="";}
@@ -1325,7 +1327,7 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
     for(const {item,patch} of targets){
       try{
         await api.updateSW(item.id, patch);
-        addHistory("데이터 수정(한글→키 변환)","software",item.id,item.name||"소프트웨어",
+        await addHistory("데이터 수정(한글→키 변환)","software",item.id,item.name||"소프트웨어",
           `자동수정: ${Object.entries(patch).map(([k,v])=>`${k}: "${item[k]}"→"${v}"`).join(", ")}`,
           JSON.stringify(item), JSON.stringify({...item,...patch}));
         ok++;
