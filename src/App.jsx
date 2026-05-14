@@ -1857,10 +1857,12 @@ function HistorySection({ history, historyCount, currentUser }) {
 
       <ResponsiveTable
         cols={[
-          { label:"번호", minWidth:60, render:(h,ri)=>{
-            // filtered 기준으로 순번: 최신=1번
-            const idx = filtered.findIndex(x=>(x.id&&x.id===h.id)||(x.ts===h.ts&&x.username===h.username));
-            return <span style={{color:"#64748b",fontSize:12}}>{idx>=0 ? idx+1 : ri+1}</span>;
+          { label:"번호", minWidth:60, render:(h)=>{
+            // history 배열은 최신순(desc) 정렬 → 처음 등록된 로그가 1번이 되도록 역산
+            // totalCount(DB 전체 건수) - history 내 위치 = 오래된 순 번호
+            const posInHistory = history.findIndex(x=>(x.id&&x.id===h.id)||(x.ts===h.ts&&x.username===h.username));
+            const num = posInHistory >= 0 ? totalCount - posInHistory : "-";
+            return <span style={{color:"#64748b",fontSize:12}}>{num}</span>;
           }},
           { label:"시간",    minWidth:155, render:h=><span style={{fontSize:11,whiteSpace:"nowrap",color:"#64748b"}}>{fDT(h.ts)}</span> },
           { label:"수행자",  minWidth:100, key:"username" },
