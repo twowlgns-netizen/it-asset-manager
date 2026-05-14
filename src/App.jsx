@@ -122,18 +122,46 @@ const triggerDownload = (blob, name) => {
 };
 
 // ================================================================
+// 🧹 DB 전송 전 컬럼 정제 (DB에 없는 컬럼 제거)
+// ================================================================
+// assets 테이블의 실제 DB 컬럼 목록 (hwnum, name, type 등 없는 컬럼 제외)
+const HW_DB_COLS = new Set([
+  "id","num","assetstatus","clinic","inspectiondate","gccode","imedcode",
+  "serialnumber","ip","team","username","pcname","modelname","assettype",
+  "notes","macaddress","receiptdate","purchasedate","manufacturer","cpu",
+  "memory","hdd","purpose","corporation","location","purchaseinfo","created_at"
+]);
+// software 테이블의 실제 DB 컬럼 목록
+const SW_DB_COLS = new Set([
+  "id","swnum","name","category","version","vendor","licensetype","licensekey",
+  "quantity","cost","purchasedate","expirydate","assignedto","clinic","status",
+  "notes","created_at"
+]);
+
+const sanitizeHW = (obj) => {
+  const out = {};
+  Object.keys(obj).forEach(k => { if (HW_DB_COLS.has(k)) out[k] = obj[k]; });
+  return out;
+};
+const sanitizeSW = (obj) => {
+  const out = {};
+  Object.keys(obj).forEach(k => { if (SW_DB_COLS.has(k)) out[k] = obj[k]; });
+  return out;
+};
+
+// ================================================================
 // 🌐 API
 // ================================================================
 const api = {
   // 자산
   getHW:    () => fetch(`${BASE_URL}/assets?select=*&order=num.asc.nullslast,created_at.desc`, { headers: H }).then(safeJson),
-  addHW:    (d) => fetch(`${BASE_URL}/assets`, { method:"POST", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(d) }).then(safeJson),
-  updateHW: (id,d) => fetch(`${BASE_URL}/assets?id=eq.${id}`, { method:"PATCH", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(d) }).then(safeJson),
+  addHW:    (d) => fetch(`${BASE_URL}/assets`, { method:"POST", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(sanitizeHW(d)) }).then(safeJson),
+  updateHW: (id,d) => fetch(`${BASE_URL}/assets?id=eq.${id}`, { method:"PATCH", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(sanitizeHW(d)) }).then(safeJson),
   deleteHW: (id) => fetch(`${BASE_URL}/assets?id=eq.${id}`, { method:"DELETE", headers:H }).then(safeJson),
   // 소프트웨어
   getSW:    () => fetch(`${BASE_URL}/software?select=*&order=created_at.desc`, { headers: H }).then(safeJson),
-  addSW:    (d) => fetch(`${BASE_URL}/software`, { method:"POST", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(d) }).then(safeJson),
-  updateSW: (id,d) => fetch(`${BASE_URL}/software?id=eq.${id}`, { method:"PATCH", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(d) }).then(safeJson),
+  addSW:    (d) => fetch(`${BASE_URL}/software`, { method:"POST", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(sanitizeSW(d)) }).then(safeJson),
+  updateSW: (id,d) => fetch(`${BASE_URL}/software?id=eq.${id}`, { method:"PATCH", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(sanitizeSW(d)) }).then(safeJson),
   deleteSW: (id) => fetch(`${BASE_URL}/software?id=eq.${id}`, { method:"DELETE", headers:H }).then(safeJson),
   // 사용자
   getUsers:    () => fetch(`${BASE_URL}/users?select=*`, { headers:H }).then(safeJson),
@@ -582,15 +610,11 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
     if (!form.gccode && !form.modelname && !form.imedcode) return alert("GC자산코드 또는 모델명을 입력하세요.");
     setLoading(true);
     const isAdd = modal==="add";
-    // 번호 자동입력: 등록 시 HW-N 형식으로 부여 (hwnum 필드)
+    // 번호 자동입력: 등록 시 num 자동 부여 (hwnum은 DB에 없으므로 제외)
     let formData = form;
-    if (isAdd && !form.hwnum) {
-      // 기존 hwnum에서 숫자 추출하여 최대값+1
-      const maxNum = Math.max(0, ...data.map(h => {
-        const m = String(h.hwnum||h.num||"").match(/(\d+)$/);
-        return m ? parseInt(m[1]) : 0;
-      }));
-      formData = { ...form, hwnum: `HW-${maxNum + 1}`, num: maxNum + 1 };
+    if (isAdd && !form.num) {
+      const maxNum = Math.max(0, ...data.map(h => parseInt(h.num||0)||0));
+      formData = { ...form, num: maxNum + 1 };
     }
     const before = isAdd ? "" : JSON.stringify(data.find(h=>h.id===formData.id)||{});
     const req = isAdd ? api.addHW(formData) : api.updateHW(formData.id, formData);
@@ -746,10 +770,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
         const buf=await file.arrayBuffer(); const wb=XLSX.read(buf,{type:"array"});
         rawRows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
       }
-      const existingMaxNum = Math.max(0, ...data.map(h => {
-        const m = String(h.hwnum||h.num||"").match(/(\d+)$/);
-        return m ? parseInt(m[1]) : 0;
-      }));
+      const existingMaxNum = Math.max(0, ...data.map(h => parseInt(h.num||0)||0));
       const items=rawRows.filter(r=>Object.values(r).some(v=>v!=="")).map((row,idx)=>{
         const item={};
         HW_FIELDS.forEach(f=>{
@@ -765,12 +786,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
           item.assettype   = ASSETTYPE_LABEL_MAP[item.assettype]   ?? item.assettype;
         if(!item.assetstatus) item.assetstatus = "active";
         if(!item.assettype)   item.assettype   = "laptop";
-        // name/type 컬럼 NOT NULL 대응 (구버전 스키마 호환)
-        if(!item.name) item.name = item.modelname || item.gccode || item.imedcode || "자산";
-        if(!item.type) item.type = item.assettype || "laptop";
-        const n = existingMaxNum + idx + 1;
-        item.num = n;
-        item.hwnum = `HW-${n}`;
+        item.num = existingMaxNum + idx + 1;
         return item;
       });
       if(!items.length){alert("데이터 없음");return;}
@@ -780,7 +796,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
         items.splice(MAX_IMPORT);
       }
       if(!window.confirm(`${items.length}건을 가져오시겠습니까?\n\n⚠️ 한 번에 최대 1000건까지 등록 가능합니다.`)) return;
-      const res=await fetch(`${BASE_URL}/assets`,{method:"POST",headers:{...H,"Prefer":"return=representation"},body:JSON.stringify(items)});
+      const res=await fetch(`${BASE_URL}/assets`,{method:"POST",headers:{...H,"Prefer":"return=representation"},body:JSON.stringify(items.map(sanitizeHW))});
       if(!res.ok){throw new Error(await res.text());}
       const inserted = await res.clone().json().catch(()=>items);
       await api.getHW().then(list=>setHw(Array.isArray(list)?list:[]));
@@ -801,7 +817,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
 
   // 컬럼 렌더러
   const COL_RENDERERS = {
-    num:           h=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{h.hwnum||`HW-${h.num||"?"}`}</span>,
+    num:           h=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{h.num ? `HW-${h.num}` : "-"}</span>,
     assetstatus:   h=>{ const s=STATUS_BADGE[h.assetstatus]||{bg:"#f1f5f9",color:"#64748b"}; return <span style={{background:s.bg,color:s.color,padding:"3px 8px",borderRadius:20,fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{ASSET_STATUS[h.assetstatus]||h.assetstatus||"-"}</span>; },
     clinic:        h=><span style={{fontSize:12}}>{CLINICS[h.clinic]||h.clinic||"-"}</span>,
     inspectiondate:h=><span style={{fontSize:12}}>{h.inspectiondate||"-"}</span>,
@@ -1276,7 +1292,7 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
       const MAX=500;
       if(items.length>MAX){alert(`최대 ${MAX}건까지 가져올 수 있습니다.\n처음 ${MAX}건만 가져옵니다.`);items.splice(MAX);}
       if(!window.confirm(`${items.length}건을 가져오시겠습니까?`)) return;
-      const res=await fetch(`${BASE_URL}/software`,{method:"POST",headers:{...H,"Prefer":"return=representation"},body:JSON.stringify(items)});
+      const res=await fetch(`${BASE_URL}/software`,{method:"POST",headers:{...H,"Prefer":"return=representation"},body:JSON.stringify(items.map(sanitizeSW))});
       if(!res.ok)throw new Error(await res.text());
       await api.getSW().then(list=>setSw(Array.isArray(list)?list:[]));
       // 파일 전체 요약 로그
