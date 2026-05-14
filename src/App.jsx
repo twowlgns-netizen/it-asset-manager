@@ -483,9 +483,13 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
       try {
         // ① 휴지통 저장 먼저 (item 객체 그대로 전달 - API에서 jsonb 처리)
         const trashResult = await api.addTrash({ item_data: item, table_name:"assets", deletedat:nowISO() });
-        if (!trashResult) throw new Error("휴지통 저장 실패");
+        // 배열/객체 모두 허용 - null·빈객체인 경우만 실패 처리
+        const saved = Array.isArray(trashResult) ? trashResult[0] : trashResult;
+        if (!saved || (typeof saved === "object" && Object.keys(saved).length === 0)) throw new Error("휴지통 저장 실패");
         // ② 휴지통 저장 성공 후 원본 삭제
         await api.deleteHW(item.id);
+        // ③ UI에 즉시 반영 (페이지 이동 전 휴지통에 보이도록)
+        setTrash(prev => [...prev, saved]);
         addHistory("하드웨어 삭제","hardware",item.id,name,
           `선택삭제-휴지통 / 지점:${item.clinic||"-"} / 팀:${item.team||"-"} / 사용자:${item.username||"-"}`,
           JSON.stringify(item),"");
@@ -493,6 +497,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
       } catch(e) { console.error("선택삭제 오류:", e); alert(`오류(${name}): ${e.message}`); }
     }
     setSelectedIds(new Set());
+    // DB에서 최신 상태 재조회 (정합성 확인)
     const [fresh, newTrash] = await Promise.all([api.getHW(), api.getTrash()]);
     setHw(Array.isArray(fresh)?fresh:[]);
     setTrash(Array.isArray(newTrash)?newTrash:[]);
@@ -525,12 +530,15 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
   const deleteItem = (item) => {
     const name = item.gccode||item.modelname||"자산";
     if (!window.confirm(`"${name}"을(를) 휴지통으로 이동하시겠습니까?`)) return;
-    api.deleteHW(item.id)
-      .then(()=>api.addTrash({ item_data: item, table_name:"assets", deletedat:nowISO() }))
-      .then(added=>{
+    // ① 휴지통 저장 먼저 → ② 성공 후 원본 삭제 (데이터 유실 방지)
+    api.addTrash({ item_data: item, table_name:"assets", deletedat:nowISO() })
+      .then(added => {
+        const t = Array.isArray(added) ? added[0] : added;
+        return api.deleteHW(item.id).then(() => t);
+      })
+      .then(t => {
         setHw(prev=>prev.filter(h=>h.id!==item.id));
-        const t=Array.isArray(added)?added[0]:added;
-        if(t) setTrash(prev=>[...prev,t]);
+        if(t && Object.keys(t).length > 0) setTrash(prev=>[...prev,t]);
         addHistory("하드웨어 삭제","hardware",item.id,name,"휴지통 이동",JSON.stringify(item),"");
       }).catch(err=>alert("삭제 오류: "+err.message));
   };
@@ -803,11 +811,11 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
                 </div>
               )}
             </div>
-            {canEdit && selectedIds.size>0 && (
-              <Btn onClick={deleteSelected} variant="danger">🗑️ 선택삭제 ({selectedIds.size})</Btn>
-            )}
             <Btn onClick={()=>setView("qrscan")} style={{background:"#0f6e56",color:"#fff",border:"none"}}>📷 QR 스캔</Btn>
             {canEdit && <Btn onClick={()=>{setForm({assetstatus:"active",assettype:"laptop"});setModal("add");}} variant="primary">+ 등록</Btn>}
+            {canEdit && selectedIds.size>0 && (
+              <Btn onClick={deleteSelected} variant="danger" style={{minWidth:"max-content"}}>🗑️ 선택삭제 ({selectedIds.size})</Btn>
+            )}
           </div>
         </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -840,7 +848,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
             style={{padding:"5px 8px",borderRadius:8,border:"1px solid #ddd",fontSize:13,background:"#fff"}}>
             {[10,20,30,50,100].map(n=><option key={n} value={n}>{n}개</option>)}
           </select>
-          <span style={{fontSize:12}}>({(currentPage-1)*pageSize+1}–{Math.min(currentPage*pageSize,filtered.length)} / {filtered.length}건)</span>
+          <span style={{fontSize:12}}>({filtered.length===0?"0":((currentPage-1)*pageSize+1)}–{Math.min(currentPage*pageSize,filtered.length)} / {filtered.length}건)</span>
         </div>
         {totalPages>1 && (
           <div style={{display:"flex",gap:4,alignItems:"center"}}>
@@ -1063,8 +1071,10 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
       const name = item.name||"소프트웨어";
       try {
         const trashResult = await api.addTrash({ item_data: item, table_name:"software", deletedat:nowISO() });
-        if (!trashResult) throw new Error("휴지통 저장 실패");
+        const saved = Array.isArray(trashResult) ? trashResult[0] : trashResult;
+        if (!saved || (typeof saved === "object" && Object.keys(saved).length === 0)) throw new Error("휴지통 저장 실패");
         await api.deleteSW(item.id);
+        setTrash(prev => [...prev, saved]);
         addHistory("소프트웨어 삭제","software",item.id,name,
           `선택삭제-휴지통 / 벤더:${item.vendor||"-"} / 담당:${item.assignedto||"-"} / 지점:${item.clinic||"-"}`,
           JSON.stringify(item),"");
@@ -1092,12 +1102,15 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
 
   const deleteItem = (item) => {
     if(!window.confirm(`"${item.name}" 휴지통으로 이동?`)) return;
-    api.deleteSW(item.id)
-      .then(()=>api.addTrash({item_data: item, table_name:"software", deletedat:nowISO()}))
-      .then(added=>{
+    // ① 휴지통 저장 먼저 → ② 성공 후 원본 삭제 (데이터 유실 방지)
+    api.addTrash({item_data: item, table_name:"software", deletedat:nowISO()})
+      .then(added => {
+        const t = Array.isArray(added) ? added[0] : added;
+        return api.deleteSW(item.id).then(() => t);
+      })
+      .then(t => {
         setSw(prev=>prev.filter(s=>s.id!==item.id));
-        const t=Array.isArray(added)?added[0]:added;
-        if(t) setTrash(prev=>[...prev,t]);
+        if(t && Object.keys(t).length > 0) setTrash(prev=>[...prev,t]);
         addHistory("소프트웨어 삭제","software",item.id,item.name,"휴지통 이동",JSON.stringify(item),"");
       }).catch(err=>alert("삭제 오류: "+err.message));
   };
@@ -1253,7 +1266,7 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
               </div>
             )}
           </div>
-          {canEdit && selectedIds.size>0 && <Btn onClick={deleteSelected} variant="danger">🗑️ 선택삭제 ({selectedIds.size})</Btn>}
+          {canEdit && selectedIds.size>0 && <Btn onClick={deleteSelected} variant="danger" style={{minWidth:"max-content"}}>🗑️ 선택삭제 ({selectedIds.size})</Btn>}
           {canEdit && <Btn onClick={()=>{setForm({status:"active"});setModal("add");}} variant="primary">+ 등록</Btn>}
         </div>
       </div>
@@ -1284,7 +1297,7 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
             style={{padding:"5px 8px",borderRadius:8,border:"1px solid #ddd",fontSize:13,background:"#fff"}}>
             {[10,20,30,50,100].map(n=><option key={n} value={n}>{n}개</option>)}
           </select>
-          <span style={{fontSize:12}}>({(currentPage-1)*pageSize+1}–{Math.min(currentPage*pageSize,filtered.length)} / {filtered.length}건)</span>
+          <span style={{fontSize:12}}>({filtered.length===0?"0":((currentPage-1)*pageSize+1)}–{Math.min(currentPage*pageSize,filtered.length)} / {filtered.length}건)</span>
         </div>
         {totalPages>1 && (
           <div style={{display:"flex",gap:4,alignItems:"center"}}>
