@@ -711,13 +711,16 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
 
   const save = () => {
     if (!form.gccode && !form.modelname && !form.imedcode) return alert("GC자산코드 또는 모델명을 입력하세요.");
-    // ── 아이메드코드 중복 체크 (신규 등록 시에만 / 수정 시에는 본인 제외)
+
+    // ── 아이메드코드 중복 체크
+    // form.id가 있으면 수정 모드 → 자기 자신(같은 id) 제외하고 검사
+    // form.id가 없으면 신규 등록 모드 → 전체 대상 검사
     if (form.imedcode && form.imedcode.trim()) {
-      const isEditMode = modal === "edit";
+      const selfId = form.id ? String(form.id) : null;
       const dup = data.find(h =>
         h.imedcode &&
         h.imedcode.trim().toLowerCase() === form.imedcode.trim().toLowerCase() &&
-        String(h.id) !== String(form.id)   // 타입 무관하게 문자열 비교로 본인 제외
+        (selfId === null || String(h.id) !== selfId)  // 수정 시 본인 id 제외
       );
       if (dup) {
         return alert(
@@ -730,8 +733,9 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
         );
       }
     }
+
     setLoading(true);
-    const isAdd = modal==="add";
+    const isAdd = !form.id;   // id가 없으면 신규, 있으면 수정
     // 번호 자동입력: 등록 시 num 자동 부여 (hwnum은 DB에 없으므로 제외)
     let formData = form;
     if (isAdd && !form.num) {
@@ -1351,7 +1355,7 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
 
   const save = () => {
     setLoading(true);
-    const isAdd=modal==="add";
+    const isAdd = !form.id;   // id가 없으면 신규, 있으면 수정
     const before=isAdd?"":JSON.stringify(data.find(s=>s.id===form.id)||{});
     // 신규 등록 시 등록자·등록일시 자동 기록 (수정 시에는 기존값 유지)
     const formData = isAdd ? {
@@ -1780,9 +1784,9 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
 
   const save = () => {
     if(!form.loginid||!form.name) return alert("아이디와 이름을 입력하세요.");
-    if(modal==="add"&&!form.password) return alert("비밀번호를 입력하세요.");
+    const isAdd = !form.id;   // id가 없으면 신규, 있으면 수정
+    if(isAdd && !form.password) return alert("비밀번호를 입력하세요.");
     setLoading(true);
-    const isAdd=modal==="add";
     let formData = form;
     if(isAdd && !form.usernum) {
       const maxNum = Math.max(0, ...users.map(u => {
