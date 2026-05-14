@@ -580,11 +580,15 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
     if (!form.gccode && !form.modelname && !form.imedcode) return alert("GC자산코드 또는 모델명을 입력하세요.");
     setLoading(true);
     const isAdd = modal==="add";
-    // 번호 자동입력: 등록 시 현재 최대 번호 + 1
+    // 번호 자동입력: 등록 시 HW-N 형식으로 부여 (hwnum 필드)
     let formData = form;
-    if (isAdd && !form.num) {
-      const maxNum = Math.max(0, ...data.map(h => parseInt(h.num) || 0));
-      formData = { ...form, num: maxNum + 1 };
+    if (isAdd && !form.hwnum) {
+      // 기존 hwnum에서 숫자 추출하여 최대값+1
+      const maxNum = Math.max(0, ...data.map(h => {
+        const m = String(h.hwnum||h.num||"").match(/(\d+)$/);
+        return m ? parseInt(m[1]) : 0;
+      }));
+      formData = { ...form, hwnum: `HW-${maxNum + 1}`, num: maxNum + 1 };
     }
     const before = isAdd ? "" : JSON.stringify(data.find(h=>h.id===formData.id)||{});
     const req = isAdd ? api.addHW(formData) : api.updateHW(formData.id, formData);
@@ -740,7 +744,10 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
         const buf=await file.arrayBuffer(); const wb=XLSX.read(buf,{type:"array"});
         rawRows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
       }
-      const existingMaxNum = Math.max(0, ...data.map(h => parseInt(h.num) || 0));
+      const existingMaxNum = Math.max(0, ...data.map(h => {
+        const m = String(h.hwnum||h.num||"").match(/(\d+)$/);
+        return m ? parseInt(m[1]) : 0;
+      }));
       const items=rawRows.filter(r=>Object.values(r).some(v=>v!=="")).map((row,idx)=>{
         const item={};
         HW_FIELDS.forEach(f=>{
@@ -756,7 +763,9 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
           item.assettype   = ASSETTYPE_LABEL_MAP[item.assettype]   ?? item.assettype;
         if(!item.assetstatus) item.assetstatus = "active";
         if(!item.assettype)   item.assettype   = "laptop";
-        item.num = existingMaxNum + idx + 1;
+        const n = existingMaxNum + idx + 1;
+        item.num = n;
+        item.hwnum = `HW-${n}`;
         return item;
       });
       if(!items.length){alert("데이터 없음");return;}
@@ -787,7 +796,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
 
   // 컬럼 렌더러
   const COL_RENDERERS = {
-    num:           h=><span style={{color:"#64748b",fontSize:12}}>{h.num||"-"}</span>,
+    num:           h=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{h.hwnum||`HW-${h.num||"?"}`}</span>,
     assetstatus:   h=>{ const s=STATUS_BADGE[h.assetstatus]||{bg:"#f1f5f9",color:"#64748b"}; return <span style={{background:s.bg,color:s.color,padding:"3px 8px",borderRadius:20,fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{ASSET_STATUS[h.assetstatus]||h.assetstatus||"-"}</span>; },
     clinic:        h=><span style={{fontSize:12}}>{CLINICS[h.clinic]||h.clinic||"-"}</span>,
     inspectiondate:h=><span style={{fontSize:12}}>{h.inspectiondate||"-"}</span>,
@@ -1064,6 +1073,7 @@ function QRModal({ item }) {
 // 💿 [소프트웨어]
 // ================================================================
 const SW_FIELDS = [
+  { key:"swnum",       label:"번호",           type:"text"     },
   { key:"name",        label:"소프트웨어명",   type:"text"     },
   { key:"category",    label:"카테고리",       type:"select",  options:SW_CATEGORIES },
   { key:"version",     label:"버전",           type:"text"     },
@@ -1081,7 +1091,7 @@ const SW_FIELDS = [
 ];
 const SW_FIELD_MAP  = Object.fromEntries(SW_FIELDS.map(f=>[f.key,f]));
 const ALL_SW_COLS   = SW_FIELDS.map(f=>({key:f.key,label:f.label}));
-const DEFAULT_SW_COLS = new Set(["name","category","version","vendor","quantity","expirydate","assignedto","clinic","status"]);
+const DEFAULT_SW_COLS = new Set(["swnum","name","category","version","vendor","quantity","expirydate","assignedto","clinic","status"]);
 
 // localStorage 컬럼 설정 저장/불러오기
 const loadColPref = (key, def) => {
@@ -1169,10 +1179,19 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
     setLoading(true);
     const isAdd=modal==="add";
     const before=isAdd?"":JSON.stringify(data.find(s=>s.id===form.id)||{});
-    const req=isAdd?api.addSW(form):api.updateSW(form.id,form);
+    // SW-N 번호 자동부여
+    let formData = form;
+    if (isAdd && !form.swnum) {
+      const maxNum = Math.max(0, ...data.map(s => {
+        const m = String(s.swnum||"").match(/(\d+)$/);
+        return m ? parseInt(m[1]) : 0;
+      }));
+      formData = { ...form, swnum: `SW-${maxNum + 1}` };
+    }
+    const req=isAdd?api.addSW(formData):api.updateSW(formData.id,formData);
     req.then(()=>api.getSW()).then(list=>{
       setSw(Array.isArray(list)?list:[]);
-      addHistory(isAdd?"소프트웨어 등록":"소프트웨어 수정","software",form.id||"",form.name,isAdd?"신규 등록":"정보 수정",before,JSON.stringify(form));
+      addHistory(isAdd?"소프트웨어 등록":"소프트웨어 수정","software",formData.id||"",formData.name,isAdd?"신규 등록":"정보 수정",before,JSON.stringify(formData));
       setModal(null);
     }).catch(err=>alert("오류: "+err.message)).finally(()=>setLoading(false));
   };
@@ -1238,9 +1257,14 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
         const buf=await file.arrayBuffer();const wb=XLSX.read(buf,{type:"array"});
         rawRows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
       }
-      const items=rawRows.filter(r=>Object.values(r).some(v=>v!=="")).map(row=>{
+      const swMaxNum = Math.max(0, ...data.map(s => {
+        const m = String(s.swnum||"").match(/(\d+)$/);
+        return m ? parseInt(m[1]) : 0;
+      }));
+      const items=rawRows.filter(r=>Object.values(r).some(v=>v!=="")).map((row,idx)=>{
         const item={status:"active"};
         SW_FIELDS.forEach(f=>{const val=row[f.label]!==undefined?row[f.label]:(row[f.key]!==undefined?row[f.key]:"");if(val!=="")item[f.key]=val;});
+        if(!item.swnum) item.swnum = `SW-${swMaxNum + idx + 1}`;
         return item;
       });
       if(!items.length){alert("데이터 없음");return;}
@@ -1265,8 +1289,48 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
     finally{setImportLoading(false);e.target.value="";}
   };
 
-  // 컬럼 렌더러
-  const SW_RENDERERS = {
+  // SW 한글값 일괄수정 (clinic, status, category가 한글로 저장된 경우)
+  const SW_CLINIC_LABEL_MAP    = Object.fromEntries(Object.entries(CLINICS).filter(([k])=>k!=="all").map(([k,v])=>[v,k]));
+  const SW_STATUS_LABEL_MAP    = Object.fromEntries(Object.entries(SW_STATUS).map(([k,v])=>[v,k]));
+  const SW_CATEGORY_LABEL_MAP  = Object.fromEntries(Object.entries(SW_CATEGORIES).map(([k,v])=>[v,k]));
+  const VALID_SW_CLINIC_KEYS   = new Set(Object.keys(CLINICS).filter(k=>k!=="all"));
+  const VALID_SW_STATUS_KEYS   = new Set(Object.keys(SW_STATUS));
+  const VALID_SW_CATEGORY_KEYS = new Set(Object.keys(SW_CATEGORIES));
+  const [swFixLoading, setSwFixLoading] = useState(false);
+
+  const fixSWKoreanValues = async () => {
+    const targets = data.map(s => {
+      const patch = {};
+      if(s.clinic   && !VALID_SW_CLINIC_KEYS.has(s.clinic)   && SW_CLINIC_LABEL_MAP[s.clinic])   patch.clinic   = SW_CLINIC_LABEL_MAP[s.clinic];
+      if(s.status   && !VALID_SW_STATUS_KEYS.has(s.status)   && SW_STATUS_LABEL_MAP[s.status])   patch.status   = SW_STATUS_LABEL_MAP[s.status];
+      if(s.category && !VALID_SW_CATEGORY_KEYS.has(s.category)&& SW_CATEGORY_LABEL_MAP[s.category]) patch.category = SW_CATEGORY_LABEL_MAP[s.category];
+      return Object.keys(patch).length > 0 ? {item:s, patch} : null;
+    }).filter(Boolean);
+    if(targets.length===0){ alert("수정할 항목이 없습니다.\n모든 지점/상태/카테고리 값이 이미 올바르게 저장되어 있습니다."); return; }
+    const preview = targets.slice(0,5).map(({item,patch})=>
+      `· ${item.name||"(이름없음)"}: ${Object.entries(patch).map(([k,v])=>`${k} "${item[k]}"→"${v}"`).join(", ")}`
+    ).join("\n");
+    const more = targets.length>5?`\n... 외 ${targets.length-5}건`:"";
+    if(!window.confirm(`한글 값이 감지된 ${targets.length}건을 수정합니다.\n\n${preview}${more}\n\n계속하시겠습니까?`)) return;
+    setSwFixLoading(true);
+    let ok=0, fail=0;
+    for(const {item,patch} of targets){
+      try{
+        await api.updateSW(item.id, patch);
+        addHistory("데이터 수정(한글→키 변환)","software",item.id,item.name||"소프트웨어",
+          `자동수정: ${Object.entries(patch).map(([k,v])=>`${k}: "${item[k]}"→"${v}"`).join(", ")}`,
+          JSON.stringify(item), JSON.stringify({...item,...patch}));
+        ok++;
+      } catch{ fail++; }
+    }
+    const fresh = await api.getSW();
+    setSw(Array.isArray(fresh)?fresh:[]);
+    setSwFixLoading(false);
+    alert(`완료: ${ok}건 수정${fail>0?`, ${fail}건 실패`:""}`);
+  };
+
+  // SW 컬럼 렌더러
+    swnum:       s=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{s.swnum||"-"}</span>,
     name:        s=><b style={{fontSize:13}}>{s.name||"-"}</b>,
     category:    s=>SW_CATEGORIES[s.category]||s.category||"-",
     version:     s=>s.version||"-",
@@ -1317,6 +1381,12 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
           <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleImport} style={{display:"none"}}/>
           <Btn onClick={()=>fileInputRef.current?.click()} disabled={importLoading}>{importLoading?"가져오는 중...":"📂 가져오기"}</Btn>
           <Btn onClick={downloadSWTemplate}>📋 양식</Btn>
+          {canEdit && (
+            <Btn onClick={fixSWKoreanValues} disabled={swFixLoading}
+              style={{background:"#fff7ed",color:"#c2410c",border:"1px solid #fed7aa"}}>
+              {swFixLoading?"수정 중...":"🔧 한글값 일괄수정"}
+            </Btn>
+          )}
           <Btn onClick={exportCSV}>⬇️ CSV</Btn>
           <Btn onClick={exportExcel}>⬇️ Excel</Btn>
           {/* 컬럼 선택 */}
@@ -1513,11 +1583,14 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
       </div>
       <ResponsiveTable
         cols={[
+          { label:"번호",    minWidth:80,  render:u=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{u.usernum||"-"}</span> },
           { label:"아이디",  key:"loginid", minWidth:130 },
           { label:"이름",    key:"name",    minWidth:110 },
           { label:"부서",    key:"dept",    minWidth:130 },
           { label:"지점",    minWidth:140,  render:u=>CLINICS[u.clinic]||u.clinic||"-" },
           { label:"권한",    minWidth:120,  render:u=>{ const r={admin:{bg:"#e8f5e9",c:"#0f6e56"},user:{bg:"#eff6ff",c:"#2563eb"},readonly:{bg:"#f1f5f9",c:"#64748b"}}[u.role]||{bg:"#f1f5f9",c:"#64748b"}; return <span style={{background:r.bg,color:r.c,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700}}>{ROLES[u.role]||u.role}</span>; }},
+          { label:"계정생성일", minWidth:120, render:u=>u.created_date||fDate(u.created_at)||"-" },
+          { label:"PW변경일",  minWidth:120, render:u=>u.password_changed_date||"-" },
         ]}
         rows={pagedUsers} empty="사용자가 없습니다."
       />
@@ -1529,7 +1602,19 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
     if(modal==="add"&&!form.password) return alert("비밀번호를 입력하세요.");
     setLoading(true);
     const isAdd=modal==="add";
-    const req=isAdd?api.addUser(form):api.updateUser(form.id,form);
+    let formData = form;
+    if(isAdd && !form.usernum) {
+      const maxNum = Math.max(0, ...users.map(u => {
+        const m = String(u.usernum||"").match(/(\d+)$/);
+        return m ? parseInt(m[1]) : 0;
+      }));
+      // 계정생성일/패스워드변경일 자동설정
+      formData = { ...form, usernum: `USR-${maxNum + 1}`, created_date: todayStr(), password_changed_date: todayStr() };
+    } else if(!isAdd && form.password && form.password !== users.find(u=>u.id===form.id)?.password) {
+      // 패스워드 변경 시 변경일 갱신
+      formData = { ...form, password_changed_date: todayStr() };
+    }
+    const req=isAdd?api.addUser(formData):api.updateUser(formData.id,formData);
     req.then(()=>api.getUsers()).then(list=>{
       setUsers(Array.isArray(list)&&list.length?list:INIT_USERS);
       addHistory(isAdd?"사용자 등록":"사용자 수정","user",form.id||"",form.name,isAdd?"신규 등록":"정보 수정");
@@ -1579,12 +1664,15 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
       {pageSizeUI}
       <ResponsiveTable
         cols={[
-          { label:"아이디",   key:"loginid", minWidth:130 },
-          { label:"이름",     key:"name",    minWidth:110 },
-          { label:"부서",     key:"dept",    minWidth:130 },
-          { label:"지점",     minWidth:140,  render:u=>CLINICS[u.clinic]||u.clinic||"-" },
-          { label:"권한",     minWidth:120,  render:u=>{ const r={admin:{bg:"#e8f5e9",c:"#0f6e56"},user:{bg:"#eff6ff",c:"#2563eb"},readonly:{bg:"#f1f5f9",c:"#64748b"}}[u.role]||{bg:"#f1f5f9",c:"#64748b"}; return <span style={{background:r.bg,color:r.c,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700}}>{ROLES[u.role]||u.role}</span>; }},
-          { label:"관리",     minWidth:150,  noClip:true, render:u=>isAdmin&&(
+          { label:"번호",       minWidth:80,  render:u=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{u.usernum||"-"}</span> },
+          { label:"아이디",     key:"loginid", minWidth:130 },
+          { label:"이름",       key:"name",    minWidth:110 },
+          { label:"부서",       key:"dept",    minWidth:130 },
+          { label:"지점",       minWidth:140,  render:u=>CLINICS[u.clinic]||u.clinic||"-" },
+          { label:"권한",       minWidth:120,  render:u=>{ const r={admin:{bg:"#e8f5e9",c:"#0f6e56"},user:{bg:"#eff6ff",c:"#2563eb"},readonly:{bg:"#f1f5f9",c:"#64748b"}}[u.role]||{bg:"#f1f5f9",c:"#64748b"}; return <span style={{background:r.bg,color:r.c,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700}}>{ROLES[u.role]||u.role}</span>; }},
+          { label:"계정생성일",  minWidth:120,  render:u=>u.created_date||fDate(u.created_at)||"-" },
+          { label:"PW변경일",   minWidth:120,  render:u=>u.password_changed_date||"-" },
+          { label:"관리",       minWidth:170,  noClip:true, render:u=>isAdmin&&(
             <div style={{display:"flex",gap:5,flexWrap:"nowrap"}}>
               <Btn onClick={()=>{setForm({...u});setModal("edit");}} style={{fontSize:11,padding:"5px 8px"}}>수정</Btn>
               <Btn onClick={()=>deleteUser(u)} variant="danger"     style={{fontSize:11,padding:"5px 8px"}}>삭제</Btn>
@@ -1690,7 +1778,7 @@ function HistorySection({ history, historyCount, currentUser }) {
       {/* 카테고리 탭 */}
       <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
         {Object.entries(HISTORY_CATEGORIES).map(([k,v])=>{
-          const cnt = k==="all" ? history.length : (catCounts[k]||0);
+          const cnt = k==="all" ? totalCount : (catCounts[k]||0);
           if(k!=="all" && cnt===0) return null;
           return (
             <button key={k} onClick={()=>setFilterCat(k)}
@@ -1757,6 +1845,12 @@ function HistorySection({ history, historyCount, currentUser }) {
 
       <ResponsiveTable
         cols={[
+          { label:"번호", minWidth:60, render:(h,ri,allRows)=>{
+            // 전체 history에서 오래된 것부터 순번 부여 (기록된 순서)
+            const globalIdx = history.findIndex(x=>x.id===h.id||x.ts===h.ts);
+            const totalHist = history.length;
+            return <span style={{color:"#64748b",fontSize:12}}>{totalHist - globalIdx}</span>;
+          }},
           { label:"시간",    minWidth:155, render:h=><span style={{fontSize:11,whiteSpace:"nowrap",color:"#64748b"}}>{fDT(h.ts)}</span> },
           { label:"수행자",  minWidth:100, key:"username" },
           { label:"카테고리",minWidth:130, render:h=>{
@@ -2271,6 +2365,7 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
 
       <ResponsiveTable
         cols={[
+          { label:"번호",   minWidth:75, render:(t,ri)=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{`TRS-${filtered.length - filtered.indexOf(t)}`}</span>},
           { label:"구분",   minWidth:110, render:t=>{ const tb=getTable(t); return <span style={{background:tb==="assets"?"#eff6ff":"#f0fdf4",color:tb==="assets"?"#2563eb":"#0f6e56",padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700}}>{tb==="assets"?"🖥️ 장비":"💿 소프트웨어"}</span>; }},
           { label:"이름/코드", minWidth:180, render:t=>{ const d=getData(t); return <span style={{fontWeight:600,fontSize:13}}>{d.gccode||d.modelname||d.name||"-"}</span>; }},
           { label:"모델/버전", minWidth:140, render:t=>{ const d=getData(t); return d.modelname||d.version||"-"; }},
@@ -2279,11 +2374,11 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
           { label:"지점",     minWidth:120, render:t=>{ const d=getData(t); return CLINICS[d.clinic]||d.clinic||"-"; }},
           { label:"상태",     minWidth:110, render:t=>{ const d=getData(t); const sk=d.assetstatus||d.status; const b=STATUS_BADGE[sk]||{bg:"#f1f5f9",color:"#64748b"}; return sk?<span style={{background:b.bg,color:b.color,padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700}}>{ASSET_STATUS[sk]||SW_STATUS[sk]||sk}</span>:"-"; }},
           { label:"삭제일",   minWidth:155, render:t=>fDT(t.deletedat||t.deletedAt||t.created_at) },
-          { label:"관리",     minWidth:210, noClip:true, render:t=>(
-            <div style={{display:"flex",gap:5,flexWrap:"nowrap"}}>
-              <Btn onClick={()=>setDetailItem(t)} style={{fontSize:11,padding:"5px 8px"}}>🔍 상세</Btn>
-              {canEdit && <Btn onClick={()=>restore(t)} variant="warning" style={{fontSize:11,padding:"5px 8px"}}>🔄 복구</Btn>}
-              {canEdit && <Btn onClick={()=>deleteForever(t)} variant="danger" style={{fontSize:11,padding:"5px 8px"}}>🗑️ 영구삭제</Btn>}
+          { label:"관리",     minWidth:260, noClip:true, render:t=>(
+            <div style={{display:"flex",gap:5,flexWrap:"nowrap",alignItems:"center"}}>
+              <Btn onClick={()=>setDetailItem(t)} style={{fontSize:11,padding:"5px 8px",whiteSpace:"nowrap"}}>🔍 상세</Btn>
+              {canEdit && <Btn onClick={()=>restore(t)} variant="warning" style={{fontSize:11,padding:"5px 8px",whiteSpace:"nowrap"}}>🔄 복구</Btn>}
+              {canEdit && <Btn onClick={()=>deleteForever(t)} variant="danger" style={{fontSize:11,padding:"5px 8px",whiteSpace:"nowrap"}}>🗑️ 영구삭제</Btn>}
             </div>
           )},
         ]}
@@ -2474,13 +2569,31 @@ function LoginPage({ onLogin, users }) {
   const [pw,  setPw]      = useState("");
   const [loading, setLoading] = useState(false);
   const [usersReady, setUsersReady] = useState(users.length > 0);
+  const [localUsers, setLocalUsers] = useState(users);
 
   // users가 비동기로 로드되므로 준비 상태 감지
-  useEffect(() => { if (users.length > 0) setUsersReady(true); }, [users.length]);
+  useEffect(() => {
+    if (users.length > 0) {
+      setUsersReady(true);
+      setLocalUsers(users);
+    }
+  }, [users.length]);
+
+  // 컴포넌트 마운트 시 users가 없으면 DB에서 직접 조회
+  useEffect(() => {
+    if (users.length === 0) {
+      api.getUsers().then(list => {
+        if (Array.isArray(list) && list.length > 0) {
+          setLocalUsers(list);
+          setUsersReady(true);
+        }
+      }).catch(console.error);
+    }
+  }, []);
 
   const submit = async (e) => {
     e.preventDefault();
-    const user = users.find(u => u.loginid === id && u.password === pw);
+    const user = localUsers.find(u => u.loginid === id && u.password === pw);
     if (!user) { alert("아이디 또는 비밀번호가 틀립니다."); return; }
     setLoading(true);
     try { await onLogin(user); }
@@ -2586,12 +2699,15 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
 
   // 기능5,6: 정렬 처리
   const sortedRows = (() => {
-    if(!sortKey) return rows;
+    if(sortKey === null) return rows;
     const col = cols[sortKey];
-    if(!col || col.noClip === true || typeof col.render === "function") return rows; // render 컬럼은 정렬 불가
+    if(!col || col.noClip === true) return rows; // noClip 컬럼(관리 등)은 정렬 불가
+    // key가 있으면 key로 정렬 (render 유무 관계없이)
+    const sortByKey = col.key;
+    if(!sortByKey) return rows;
     return [...rows].sort((a, b) => {
-      const av = (a[col.key] ?? "").toString().toLowerCase();
-      const bv = (b[col.key] ?? "").toString().toLowerCase();
+      const av = (a[sortByKey] ?? "").toString().toLowerCase();
+      const bv = (b[sortByKey] ?? "").toString().toLowerCase();
       const n1 = parseFloat(av), n2 = parseFloat(bv);
       if(!isNaN(n1) && !isNaN(n2)) return sortDir==="asc" ? n1-n2 : n2-n1;
       return sortDir==="asc" ? av.localeCompare(bv,"ko") : bv.localeCompare(av,"ko");
@@ -2618,19 +2734,21 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
     const col = cols[i];
     if(!col) return;
     const lbl = typeof col.label === "function" ? "" : (col.label || "");
-    const labelW = lbl.length * 13 + 40;
-    // 최대 30행 기준으로 내용 길이 측정 (render 없는 컬럼만)
+    // 헤더 너비: 한글은 14px, 영문은 8px 기준 + 여백
+    const labelW = [...lbl].reduce((a,ch)=>a+(ch.charCodeAt(0)>127?14:8),0) + 52;
     let maxContentW = labelW;
-    if(col.key && !col.render) {
-      const sample = rows.slice(0, 30);
+    if(col.key) {
+      // 전체 rows 기준으로 최대 너비 계산 (최대 200행 샘플)
+      const sample = rows.slice(0, 200);
       sample.forEach(row => {
         const val = String(row[col.key] ?? "");
-        // 한글: 2배, 영문: 1배 가중치
-        const w = [...val].reduce((a, ch) => a + (ch.charCodeAt(0) > 127 ? 16 : 9), 0) + 32;
+        // 한글: 14px, 영문/숫자: 8px + 셀 패딩 24px
+        const w = [...val].reduce((a,ch)=>a+(ch.charCodeAt(0)>127?14:8),0) + 32;
         if(w > maxContentW) maxContentW = w;
       });
     }
-    const newW = Math.min(Math.max(maxContentW, 60), 400);
+    // 최소 60px, 최대 500px
+    const newW = Math.min(Math.max(maxContentW, 60), 500);
     setColWidths(prev => { const next=[...prev]; next[i]=newW; return next; });
   };
 
@@ -2755,7 +2873,7 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
                       whiteSpace: c.noClip ? "normal" : "nowrap",
                       borderRight:"1px solid #f0f4f8",
                       boxSizing:"border-box"}}>
-                      {c.render?c.render(row):row[c.key]}
+                      {c.render?c.render(row,ri,sortedRows):row[c.key]}
                     </td>
                   ))}
                 </tr>
