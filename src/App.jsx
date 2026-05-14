@@ -1330,6 +1330,7 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
   };
 
   // SW 컬럼 렌더러
+  const SW_RENDERERS = {
     swnum:       s=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{s.swnum||"-"}</span>,
     name:        s=><b style={{fontSize:13}}>{s.name||"-"}</b>,
     category:    s=>SW_CATEGORIES[s.category]||s.category||"-",
