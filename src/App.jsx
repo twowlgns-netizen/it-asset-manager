@@ -150,7 +150,7 @@ const api = {
   },
   addHistory: (d) => fetch(`${BASE_URL}/history`, { method:"POST", headers:H, body:JSON.stringify(d) }).then(safeJson),
   // 휴지통
-  getTrash:    () => fetch(`${BASE_URL}/trash?select=*&order=created_at.desc`, { headers:H }).then(safeJson),
+  getTrash:    () => fetch(`${BASE_URL}/trash?select=*&order=deletedat.desc.nullslast`, { headers:H }).then(safeJson),
   addTrash: async (d) => {
     // item_data는 jsonb 컬럼 → 반드시 JS 객체로 전송
     const itemObj = typeof d.item_data === "string"
