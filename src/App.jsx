@@ -474,10 +474,17 @@ export default function App() {
 
       {isMobile && (
         <div style={{ position:"fixed", bottom:0, left:0, right:0, height:65, background:"#fff", borderTop:"1px solid #e2e8f0", display:"flex", justifyContent:"space-around", alignItems:"center", zIndex:1000 }}>
-          {menuItems.map(m => (
-            <div key={m.id} onClick={()=>setView(m.id)} style={{ textAlign:"center", color:view===m.id?"#0f6e56":"#94a3b8" }}>
+          {/* 모바일 탭바: 지점 서브메뉴(menuType) 제외하고 주요 메뉴만 표시 */}
+          {menuItems.filter(m => !m.menuType).map(m => (
+            <div key={m.id} onClick={()=>{
+                setView(m.id);
+                if(m.id==="hardware") setHwClinicFilter("all");
+                if(m.id==="software") setSwClinicFilter("all");
+              }} style={{ textAlign:"center", color:view===m.id?"#0f6e56":"#94a3b8", cursor:"pointer", padding:"4px 2px", minWidth:0 }}>
               <div style={{ fontSize:18 }}>{m.icon}</div>
-              <div style={{ fontSize:9 }}>{m.label}</div>
+              <div style={{ fontSize:9, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", maxWidth:48 }}>
+                {m.id==="hardware" ? "장비" : m.id==="software" ? "소프트웨어" : m.label}
+              </div>
             </div>
           ))}
         </div>
@@ -704,6 +711,33 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
 
   const save = () => {
     if (!form.gccode && !form.modelname && !form.imedcode) return alert("GC자산코드 또는 모델명을 입력하세요.");
+    // ── 아이메드코드 중복 체크 (고유값)
+    if (form.imedcode && form.imedcode.trim()) {
+      const dup = data.find(h =>
+        h.imedcode &&
+        h.imedcode.trim().toLowerCase() === form.imedcode.trim().toLowerCase() &&
+        h.id !== form.id  // 수정 시 본인 제외
+      );
+      if (dup) {
+        return alert(
+          `⚠️ 아이메드코드 중복
+
+입력한 코드 "${form.imedcode}"는 이미 등록된 자산에 사용 중입니다.
+
+` +
+          `· GC코드: ${dup.gccode||"-"}
+` +
+          `· 모델명: ${dup.modelname||"-"}
+` +
+          `· 사용자: ${dup.username||"-"}
+` +
+          `· 지점: ${CLINICS[dup.clinic]||dup.clinic||"-"}
+
+` +
+          `아이메드코드를 다시 확인해 주세요.`
+        );
+      }
+    }
     setLoading(true);
     const isAdd = modal==="add";
     // 번호 자동입력: 등록 시 num 자동 부여 (hwnum은 DB에 없으므로 제외)
