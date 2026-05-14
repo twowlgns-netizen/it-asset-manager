@@ -211,6 +211,25 @@ export default function App() {
       detail, before:"", after:"",
       username: user.name, userrole: user.role, clinic: user.clinic||""
     }).catch(console.error);
+    // 로그인 직후 모든 데이터 즉시 재조회 (휴지통 포함)
+    // useEffect의 fetchAll은 isLoggedIn state 변경 후 비동기로 실행되므로
+    // 여기서도 명시적으로 호출하여 즉각 반영
+    Promise.all([
+      api.getHW(),
+      api.getSW(),
+      api.getUsers(),
+      api.getHistory(),
+      api.getHistoryCount(),
+      api.getTrash(),
+    ]).then(([hw, sw, users, hist, histCount, trash]) => {
+      setHw(Array.isArray(hw) ? hw : []);
+      setSw(Array.isArray(sw) ? sw : []);
+      setUsers(Array.isArray(users) ? users : []);
+      const l = Array.isArray(hist) ? hist : [];
+      setHistory(l.sort((a,b) => new Date(b.ts) - new Date(a.ts)));
+      setHistoryCount(histCount || 0);
+      setTrash(Array.isArray(trash) ? trash : []);
+    }).catch(console.error);
   };
 
   const handleLogout = async () => {
@@ -225,6 +244,8 @@ export default function App() {
         username: currentUser.name, userrole: currentUser.role, clinic: currentUser.clinic||""
       }).catch(console.error);
     }
+    // 로그아웃 시 모든 데이터 state 초기화 (다음 로그인 시 깨끗하게 재조회)
+    setHw([]); setSw([]); setUsers([]); setHistory([]); setHistoryCount(0); setTrash([]);
     setIsLoggedIn(false);
     setCurrentUser(null);
     localStorage.removeItem("isLoggedIn");
@@ -232,20 +253,23 @@ export default function App() {
   };
 
   const fetchAll = useCallback(() => {
+    // 로그인 상태일 때만 데이터 조회
+    if (!isLoggedIn) return;
     api.getHW().then(d=>setHw(Array.isArray(d)?d:[])).catch(console.error);
     api.getSW().then(d=>setSw(Array.isArray(d)?d:[])).catch(console.error);
     api.getUsers().then(d=>setUsers(Array.isArray(d)?d:[])).catch(console.error);
     api.getHistory().then(d=>{ const l=Array.isArray(d)?d:[]; setHistory(l.sort((a,b)=>new Date(b.ts)-new Date(a.ts))); }).catch(console.error);
     api.getHistoryCount().then(n=>setHistoryCount(n)).catch(console.error);
     api.getTrash().then(d=>setTrash(Array.isArray(d)?d:[])).catch(console.error);
-  }, []);
+  }, [isLoggedIn]);  // isLoggedIn 변경(로그인/로그아웃/앱 업데이트) 시 반드시 재조회
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth<768);
     window.addEventListener("resize", onResize);
+    // isLoggedIn이 바뀔 때마다 (최초 마운트 포함) 전체 데이터 재조회
     fetchAll();
     return () => window.removeEventListener("resize", onResize);
-  }, [fetchAll]);
+  }, [fetchAll]);  // fetchAll이 isLoggedIn에 의존하므로 로그인 변경 시 자동 재실행
 
   const addHistory = useCallback((action, aType, aId, aName, detail, before="", after="") => {
     if (!currentUser) return;
