@@ -394,7 +394,7 @@ export default function App() {
       .catch(console.error);
   }, [currentUser]);
 
-  if (!isLoggedIn) return <LoginPage onLogin={handleLogin} users={users} />;
+  if (!isLoggedIn) return <LoginPage onLogin={handleLogin} />;
   const canEdit = currentUser?.role === "admin" || currentUser?.role === "user";
   const isAdmin = currentUser?.role === "admin";
 
@@ -711,29 +711,21 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
 
   const save = () => {
     if (!form.gccode && !form.modelname && !form.imedcode) return alert("GC자산코드 또는 모델명을 입력하세요.");
-    // ── 아이메드코드 중복 체크 (고유값)
+    // ── 아이메드코드 중복 체크 (신규 등록 시에만 / 수정 시에는 본인 제외)
     if (form.imedcode && form.imedcode.trim()) {
+      const isEditMode = modal === "edit";
       const dup = data.find(h =>
         h.imedcode &&
         h.imedcode.trim().toLowerCase() === form.imedcode.trim().toLowerCase() &&
-        h.id !== form.id  // 수정 시 본인 제외
+        String(h.id) !== String(form.id)   // 타입 무관하게 문자열 비교로 본인 제외
       );
       if (dup) {
         return alert(
-          `⚠️ 아이메드코드 중복
-
-입력한 코드 "${form.imedcode}"는 이미 등록된 자산에 사용 중입니다.
-
-` +
-          `· GC코드: ${dup.gccode||"-"}
-` +
-          `· 모델명: ${dup.modelname||"-"}
-` +
-          `· 사용자: ${dup.username||"-"}
-` +
-          `· 지점: ${CLINICS[dup.clinic]||dup.clinic||"-"}
-
-` +
+          `⚠️ 아이메드코드 중복\n\n입력한 코드 "${form.imedcode}"는 이미 등록된 자산에 사용 중입니다.\n\n` +
+          `· GC코드: ${dup.gccode||"-"}\n` +
+          `· 모델명: ${dup.modelname||"-"}\n` +
+          `· 사용자: ${dup.username||"-"}\n` +
+          `· 지점: ${CLINICS[dup.clinic]||dup.clinic||"-"}\n\n` +
           `아이메드코드를 다시 확인해 주세요.`
         );
       }
@@ -1007,12 +999,12 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
     },
     ...ALL_HW_COLS.filter(c=>visibleCols.has(c.key)).map(c=>({ key:c.key, label:c.label, render:COL_RENDERERS[c.key]||(h=>h[c.key]||"-") }))
   ];
-  if (canEdit) activeCols.push({ label:"관리", minWidth:190, noClip:true, render: h=>(
+  activeCols.push({ label:"관리", minWidth: canEdit ? 190 : 120, noClip:true, render: h=>(
     <div style={{display:"flex",gap:4,flexWrap:"nowrap"}}>
       <Btn onClick={()=>{setDetailItem(h);setModal("detail");}} style={{fontSize:11,padding:"5px 7px"}}>상세</Btn>
       <Btn onClick={()=>{setQrItem(h);setModal("qr");}}         style={{fontSize:11,padding:"5px 7px"}}>QR</Btn>
-      <Btn onClick={()=>{setForm({...h});setModal("edit");}}    style={{fontSize:11,padding:"5px 7px"}}>수정</Btn>
-      <Btn onClick={()=>deleteItem(h)} variant="danger"         style={{fontSize:11,padding:"5px 7px"}}>삭제</Btn>
+      {canEdit && <Btn onClick={()=>{setForm({...h});setModal("edit");}}    style={{fontSize:11,padding:"5px 7px"}}>수정</Btn>}
+      {canEdit && <Btn onClick={()=>deleteItem(h)} variant="danger"         style={{fontSize:11,padding:"5px 7px"}}>삭제</Btn>}
     </div>
   )});
 
@@ -1112,7 +1104,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
         )}
       </div>
       <ResponsiveTable cols={activeCols} rows={pagedRows} empty="등록된 자산이 없습니다."
-        onRowDoubleClick={canEdit ? (row)=>{setForm({...row});setModal("edit");} : undefined} />
+        onRowDoubleClick={(row)=>{setDetailItem(row);setModal("detail");}} />
 
       {(modal==="add"||modal==="edit") && (
         <Modal title={modal==="add"?"새 자산 등록":"자산 정보 수정"} onClose={()=>setModal(null)}>
@@ -1122,6 +1114,13 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
       {modal==="detail" && detailItem && (
         <Modal title={`상세 — ${detailItem.gccode||detailItem.modelname||""}`} onClose={()=>setModal(null)}>
           <HWDetail item={detailItem} />
+          {canEdit && (
+            <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid #e2e8f0"}}>
+              <Btn onClick={()=>{setForm({...detailItem});setModal("edit");}} variant="primary" style={{width:"100%",padding:12}}>
+                ✏️ 이 자산 수정하기
+              </Btn>
+            </div>
+          )}
         </Modal>
       )}
       {modal==="qr" && qrItem && (
@@ -2783,59 +2782,96 @@ function ChangeDetailView({ item }) {
 // ================================================================
 // 🔑 [로그인]
 // ================================================================
-function LoginPage({ onLogin, users }) {
-  const [id,  setId]      = useState("");
-  const [pw,  setPw]      = useState("");
+function LoginPage({ onLogin }) {
+  const [id,      setId]      = useState("");
+  const [pw,      setPw]      = useState("");
   const [loading, setLoading] = useState(false);
-  const [usersReady, setUsersReady] = useState(users.length > 0);
-  const [localUsers, setLocalUsers] = useState(users);
+  const [errMsg,  setErrMsg]  = useState("");
 
-  // users가 비동기로 로드되므로 준비 상태 감지
-  useEffect(() => {
-    if (users.length > 0) {
-      setUsersReady(true);
-      setLocalUsers(users);
-    }
-  }, [users.length]);
-
-  // 컴포넌트 마운트 시 users가 없으면 DB에서 직접 조회
-  useEffect(() => {
-    if (users.length === 0) {
-      api.getUsers().then(list => {
-        if (Array.isArray(list) && list.length > 0) {
-          setLocalUsers(list);
-          setUsersReady(true);
-        }
-      }).catch(console.error);
-    }
-  }, []);
+  // 엔터키 로그인 지원
+  const handleKeyDown = (e) => { if (e.key === "Enter") submit(e); };
 
   const submit = async (e) => {
     e.preventDefault();
-    const user = localUsers.find(u => u.loginid === id && u.password === pw);
-    if (!user) { alert("아이디 또는 비밀번호가 틀립니다."); return; }
+    if (!id.trim() || !pw.trim()) { setErrMsg("아이디와 비밀번호를 모두 입력하세요."); return; }
     setLoading(true);
-    try { await onLogin(user); }
-    finally { setLoading(false); }
+    setErrMsg("");
+    try {
+      // DB에서 직접 해당 아이디/패스워드 조회 — users prop에 의존하지 않음
+      const res = await fetch(
+        `${BASE_URL}/users?loginid=eq.${encodeURIComponent(id.trim())}&password=eq.${encodeURIComponent(pw.trim())}&select=*`,
+        { headers: H }
+      );
+      if (!res.ok) throw new Error(`서버 오류 (${res.status})`);
+      const list = await res.json();
+      if (!Array.isArray(list) || list.length === 0) {
+        setErrMsg("아이디 또는 비밀번호가 올바르지 않습니다.");
+        return;
+      }
+      await onLogin(list[0]);
+    } catch (err) {
+      setErrMsg("로그인 중 오류가 발생했습니다: " + err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div style={{height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f1f5f9"}}>
-      <form onSubmit={submit} style={{width:340,background:"#fff",padding:40,borderRadius:24,boxShadow:"0 4px 24px rgba(0,0,0,0.08)"}}>
-        <h1 style={{textAlign:"center",color:"#0f6e56",marginBottom:6,fontSize:22}}>IT Asset Manager</h1>
-        <p style={{textAlign:"center",color:"#94a3b8",marginBottom:28,fontSize:12}}>GC녹십자아이메드 IT자산관리</p>
-        {!usersReady && (
-          <div style={{textAlign:"center",fontSize:12,color:"#94a3b8",marginBottom:12,padding:"8px",background:"#f8fafc",borderRadius:8}}>
-            ⏳ 사용자 정보 로딩 중...
+    <div style={{height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#f0fdf4 0%,#f1f5f9 100%)"}}>
+      <form onSubmit={submit} style={{width:360,background:"#fff",padding:"44px 40px",borderRadius:24,boxShadow:"0 8px 40px rgba(0,0,0,0.10)"}}>
+        {/* 로고 영역 */}
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <div style={{width:56,height:56,borderRadius:16,background:"#e8f5e9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,margin:"0 auto 12px"}}>🖥️</div>
+          <h1 style={{color:"#0f6e56",margin:"0 0 4px",fontSize:22,fontWeight:800}}>IT Asset Manager</h1>
+          <p style={{color:"#94a3b8",margin:0,fontSize:12}}>GC녹십자아이메드 IT자산관리</p>
+        </div>
+
+        {/* 오류 메시지 */}
+        {errMsg && (
+          <div style={{background:"#fff1f0",border:"1px solid #ffa39e",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:13,color:"#cf1322",display:"flex",gap:8,alignItems:"center"}}>
+            <span>⚠️</span>{errMsg}
           </div>
         )}
-        <input placeholder="아이디" value={id} onChange={e=>setId(e.target.value)} required disabled={loading}
-          style={{width:"100%",padding:14,marginBottom:10,borderRadius:10,border:"1px solid #eee",fontSize:14,boxSizing:"border-box"}}/>
-        <input type="password" placeholder="비밀번호" value={pw} onChange={e=>setPw(e.target.value)} required disabled={loading}
-          style={{width:"100%",padding:14,marginBottom:20,borderRadius:10,border:"1px solid #eee",fontSize:14,boxSizing:"border-box"}}/>
-        <Btn type="submit" variant="primary" disabled={loading||!usersReady} style={{width:"100%",padding:15,fontSize:15}}>
-          {loading ? "로그인 중..." : "로그인"}
+
+        <div style={{marginBottom:12}}>
+          <div style={{fontSize:12,color:"#64748b",marginBottom:5,fontWeight:600}}>아이디</div>
+          <input
+            placeholder="아이디를 입력하세요"
+            value={id}
+            onChange={e=>{setId(e.target.value);setErrMsg("");}}
+            onKeyDown={handleKeyDown}
+            required
+            disabled={loading}
+            autoFocus
+            style={{width:"100%",padding:"12px 14px",borderRadius:10,border:"1px solid #e2e8f0",fontSize:14,boxSizing:"border-box",outline:"none",transition:"border-color 0.2s"}}
+            onFocus={e=>e.target.style.borderColor="#0f6e56"}
+            onBlur={e=>e.target.style.borderColor="#e2e8f0"}
+          />
+        </div>
+        <div style={{marginBottom:24}}>
+          <div style={{fontSize:12,color:"#64748b",marginBottom:5,fontWeight:600}}>비밀번호</div>
+          <input
+            type="password"
+            placeholder="비밀번호를 입력하세요"
+            value={pw}
+            onChange={e=>{setPw(e.target.value);setErrMsg("");}}
+            onKeyDown={handleKeyDown}
+            required
+            disabled={loading}
+            style={{width:"100%",padding:"12px 14px",borderRadius:10,border:"1px solid #e2e8f0",fontSize:14,boxSizing:"border-box",outline:"none",transition:"border-color 0.2s"}}
+            onFocus={e=>e.target.style.borderColor="#0f6e56"}
+            onBlur={e=>e.target.style.borderColor="#e2e8f0"}
+          />
+        </div>
+        <Btn type="submit" variant="primary" disabled={loading} style={{width:"100%",padding:14,fontSize:15,borderRadius:12}}>
+          {loading ? (
+            <span style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+              <span style={{width:16,height:16,border:"2px solid rgba(255,255,255,0.4)",borderTopColor:"#fff",borderRadius:"50%",display:"inline-block",animation:"spin 0.8s linear infinite"}}/>
+              로그인 중...
+            </span>
+          ) : "로그인"}
         </Btn>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       </form>
     </div>
   );
