@@ -152,14 +152,47 @@ const sanitizeSW = (obj) => {
 // ================================================================
 // 🌐 API
 // ================================================================
+
+// Supabase에서 전체 데이터를 페이지 단위로 모두 가져오는 헬퍼
+// PostgREST는 기본 1000건 제한 → Range 헤더로 페이지 단위 반복 조회
+const fetchAllPages = async (url) => {
+  const PAGE = 1000;
+  let from = 0, all = [];
+  while (true) {
+    const res = await fetch(`${url}&limit=${PAGE}&offset=${from}`, {
+      headers: { ...H, "Prefer": "count=exact", "Range-Unit": "items", "Range": `${from}-${from + PAGE - 1}` }
+    });
+    const text = await res.text();
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${text}`);
+    const rows = text && text.trim() ? JSON.parse(text) : [];
+    all = all.concat(rows);
+    // Content-Range: from-to/total
+    const cr = res.headers.get("Content-Range");
+    const total = cr ? parseInt(cr.split("/")[1]) : 0;
+    from += PAGE;
+    if (all.length >= total || rows.length < PAGE) break;
+  }
+  return all;
+};
+
+// DB에서 직접 count를 가져오는 헬퍼 (대시보드 통계용)
+const fetchCount = async (table, query = "") => {
+  const res = await fetch(`${BASE_URL}/${table}?select=id${query}`, {
+    headers: { ...H, "Prefer": "count=exact", "Range-Unit": "items", "Range": "0-0" }
+  });
+  const cr = res.headers.get("Content-Range");
+  const n = cr ? parseInt(cr.split("/")[1]) : 0;
+  return isNaN(n) ? 0 : n;
+};
+
 const api = {
-  // 자산
-  getHW:    () => fetch(`${BASE_URL}/assets?select=*&order=num.asc.nullslast,created_at.desc`, { headers: H }).then(safeJson),
+  // 자산 — fetchAllPages로 1000건 초과도 전체 조회
+  getHW: () => fetchAllPages(`${BASE_URL}/assets?select=*&order=num.asc.nullslast,created_at.desc`),
   addHW:    (d) => fetch(`${BASE_URL}/assets`, { method:"POST", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(sanitizeHW(d)) }).then(safeJson),
   updateHW: (id,d) => fetch(`${BASE_URL}/assets?id=eq.${id}`, { method:"PATCH", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(sanitizeHW(d)) }).then(safeJson),
   deleteHW: (id) => fetch(`${BASE_URL}/assets?id=eq.${id}`, { method:"DELETE", headers:H }).then(safeJson),
   // 소프트웨어
-  getSW:    () => fetch(`${BASE_URL}/software?select=*&order=created_at.desc`, { headers: H }).then(safeJson),
+  getSW: () => fetchAllPages(`${BASE_URL}/software?select=*&order=created_at.desc`),
   addSW:    (d) => fetch(`${BASE_URL}/software`, { method:"POST", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(sanitizeSW(d)) }).then(safeJson),
   updateSW: (id,d) => fetch(`${BASE_URL}/software?id=eq.${id}`, { method:"PATCH", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(sanitizeSW(d)) }).then(safeJson),
   deleteSW: (id) => fetch(`${BASE_URL}/software?id=eq.${id}`, { method:"DELETE", headers:H }).then(safeJson),
@@ -168,19 +201,18 @@ const api = {
   addUser:     (d) => fetch(`${BASE_URL}/users`, { method:"POST", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(d) }).then(safeJson),
   updateUser:  (id,d) => fetch(`${BASE_URL}/users?id=eq.${id}`, { method:"PATCH", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(d) }).then(safeJson),
   deleteUser:  (id) => fetch(`${BASE_URL}/users?id=eq.${id}`, { method:"DELETE", headers:H }).then(safeJson),
-  // 히스토리 (최신 1000건 + 전체 건수 별도 조회)
+  // 히스토리
   getHistory: () => fetch(`${BASE_URL}/history?select=*&order=ts.desc&limit=1000`, { headers:H }).then(safeJson),
   getHistoryCount: async () => {
     const res = await fetch(`${BASE_URL}/history?select=id`, { headers:{...H,"Prefer":"count=exact","Range-Unit":"items","Range":"0-0"} });
-    const ct = res.headers.get("Content-Range"); // e.g. "0-0/1234"
+    const ct = res.headers.get("Content-Range");
     const total = ct ? parseInt(ct.split("/")[1]) : 0;
     return isNaN(total) ? 0 : total;
   },
   addHistory: (d) => fetch(`${BASE_URL}/history`, { method:"POST", headers:H, body:JSON.stringify(d) }).then(safeJson),
   // 휴지통
-  getTrash:    () => fetch(`${BASE_URL}/trash?select=*&order=deletedat.desc.nullslast`, { headers:H }).then(safeJson),
+  getTrash: () => fetchAllPages(`${BASE_URL}/trash?select=*&order=deletedat.desc.nullslast`),
   addTrash: async (d) => {
-    // item_data는 jsonb 컬럼 → 반드시 JS 객체로 전송
     const itemObj = typeof d.item_data === "string"
       ? (() => { try { return JSON.parse(d.item_data); } catch { return d.item_data; } })()
       : d.item_data;
@@ -193,6 +225,36 @@ const api = {
     return safeJson(res);
   },
   deleteTrash: (id) => fetch(`${BASE_URL}/trash?id=eq.${id}`, { method:"DELETE", headers:H }).then(safeJson),
+
+  // ── 대시보드 전용: DB에서 직접 count 조회 (프론트 배열 의존 제거)
+  getDashboardStats: async () => {
+    const [
+      hwTotal, hwActive, hwInactive, hwRepair, hwDisposed, hwDisposeTarget,
+      swTotal,
+      trashTotal, trashHW, trashSW,
+      gangnam, gangbuk, seoulsup,
+    ] = await Promise.all([
+      fetchCount("assets"),
+      fetchCount("assets", "&assetstatus=eq.active"),
+      fetchCount("assets", "&assetstatus=eq.inactive"),
+      fetchCount("assets", "&assetstatus=eq.repair"),
+      fetchCount("assets", "&assetstatus=eq.disposed"),
+      fetchCount("assets", "&assetstatus=eq.dispose_target"),
+      fetchCount("software"),
+      fetchCount("trash"),
+      fetchCount("trash", "&table_name=eq.assets"),
+      fetchCount("trash", "&table_name=eq.software"),
+      fetchCount("assets", "&clinic=eq.gangnam"),
+      fetchCount("assets", "&clinic=eq.gangbuk"),
+      fetchCount("assets", "&clinic=eq.seoulsup"),
+    ]);
+    return {
+      hw: { total:hwTotal, active:hwActive, inactive:hwInactive, repair:hwRepair, disposed:hwDisposed, dispose_target:hwDisposeTarget },
+      sw: { total:swTotal },
+      trash: { total:trashTotal, hw:trashHW, sw:trashSW },
+      clinics: { gangnam, gangbuk, seoulsup },
+    };
+  },
 };
 
 // ================================================================
@@ -232,6 +294,7 @@ export default function App() {
   const [history, setHistory] = useState([]);
   const [historyCount, setHistoryCount] = useState(0);
   const [trash,   setTrash]   = useState([]);
+  const [dashStats, setDashStats] = useState(null); // DB 직접 집계값
 
   const handleLogin  = async (user) => {
     setIsLoggedIn(true);
@@ -257,7 +320,8 @@ export default function App() {
       api.getHistory(),
       api.getHistoryCount(),
       api.getTrash(),
-    ]).then(([hw, sw, users, hist, histCount, trash]) => {
+      api.getDashboardStats(),
+    ]).then(([hw, sw, users, hist, histCount, trash, stats]) => {
       setHw(Array.isArray(hw) ? hw : []);
       setSw(Array.isArray(sw) ? sw : []);
       setUsers(Array.isArray(users) ? users : []);
@@ -265,6 +329,7 @@ export default function App() {
       setHistory(l.sort((a,b) => new Date(b.ts) - new Date(a.ts)));
       setHistoryCount(histCount || 0);
       setTrash(Array.isArray(trash) ? trash : []);
+      setDashStats(stats);
     }).catch(console.error);
   };
 
@@ -295,7 +360,8 @@ export default function App() {
     api.getUsers().then(d=>setUsers(Array.isArray(d)?d:[])).catch(console.error);
     api.getHistory().then(d=>{ const l=Array.isArray(d)?d:[]; setHistory(l.sort((a,b)=>new Date(b.ts)-new Date(a.ts))); }).catch(console.error);
     api.getHistoryCount().then(n=>setHistoryCount(n)).catch(console.error);
-    api.getTrash().then(d=>{ console.log("[fetchAll] trash rows:", Array.isArray(d)?d.length:d); setTrash(Array.isArray(d)?d:[]); }).catch(console.error);
+    api.getTrash().then(d=>setTrash(Array.isArray(d)?d:[])).catch(console.error);
+    api.getDashboardStats().then(s=>setDashStats(s)).catch(console.error);
   }, []); // setter 함수는 참조가 변하지 않으므로 의존성 불필요
 
   // ── resize 리스너: 마운트/언마운트 시 1번만 등록 (fetchAll과 분리)
@@ -319,6 +385,7 @@ export default function App() {
       .then(() => Promise.all([
         api.getHistory().then(d => { const l=Array.isArray(d)?d:[]; setHistory(l.sort((a,b)=>new Date(b.ts)-new Date(a.ts))); }),
         api.getHistoryCount().then(n=>setHistoryCount(n)),
+        api.getDashboardStats().then(s=>setDashStats(s)),
       ]))
       .catch(console.error);
   }, [currentUser]);
@@ -391,7 +458,7 @@ export default function App() {
           </div>
         )}
         <main style={{ padding:isMobile?"16px":"32px", paddingBottom:isMobile?130:60, boxSizing:"border-box", width:"100%" }}>
-          {view==="dashboard"  && <DashboardSection  hw={hw} sw={sw} history={history} historyCount={historyCount} trash={trash} isMobile={isMobile} />}
+          {view==="dashboard"  && <DashboardSection  hw={hw} sw={sw} history={history} historyCount={historyCount} trash={trash} isMobile={isMobile} dashStats={dashStats} />}
           {view==="hardware"   && <HardwareSection   data={hw} setHw={setHw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} setView={setView} initClinic={hwClinicFilter} />}
           {view==="software"   && <SoftwareSection   data={sw} setSw={setSw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} initClinic={swClinicFilter} />}
           {view==="users"      && <UsersSection      users={users} setUsers={setUsers} addHistory={addHistory} isAdmin={isAdmin} currentUser={currentUser} />}
@@ -418,11 +485,32 @@ export default function App() {
 // ================================================================
 // 📊 [대시보드]
 // ================================================================
-function DashboardSection({ hw, sw, history, historyCount, trash, isMobile, onHwClinic, onSwClinic }) {
+function DashboardSection({ hw, sw, history, historyCount, trash, isMobile, dashStats }) {
   const [clinicFilter, setClinicFilter] = useState("all");
-  const filtered = clinicFilter === "all" ? hw : hw.filter(h => h.clinic === clinicFilter);
 
-  const hwStats = {
+  // ── 통계값: dashStats(DB 직접 집계) 우선, 없으면 배열 계산(폴백)
+  const hwStats = dashStats ? dashStats.hw : {
+    total:          hw.length,
+    active:         hw.filter(h=>h.assetstatus==="active").length,
+    inactive:       hw.filter(h=>h.assetstatus==="inactive").length,
+    repair:         hw.filter(h=>h.assetstatus==="repair").length,
+    disposed:       hw.filter(h=>h.assetstatus==="disposed").length,
+    dispose_target: hw.filter(h=>h.assetstatus==="dispose_target").length,
+  };
+  const swTotal    = dashStats ? dashStats.sw.total    : sw.length;
+  const trashCount = dashStats ? dashStats.trash.total : (Array.isArray(trash) ? trash.length : 0);
+  const trashHW    = dashStats ? dashStats.trash.hw    : (Array.isArray(trash) ? trash.filter(t=>(t.table_name||"assets")==="assets").length : 0);
+  const trashSW    = dashStats ? dashStats.trash.sw    : (Array.isArray(trash) ? trash.filter(t=>t.table_name==="software").length : 0);
+
+  // 지점별 카운트: dashStats 있으면 DB 집계, 없으면 배열 계산
+  const clinicCounts = Object.entries(CLINICS).filter(([k])=>k!=="all").map(([k,v])=>({
+    key:k, name:v,
+    count: dashStats ? (dashStats.clinics[k] ?? 0) : hw.filter(h=>h.clinic===k).length,
+  }));
+
+  // clinicFilter가 적용된 상태별 카운트 (필터 선택 시 배열 기반 재계산 — DB 재조회 없이 즉시 반영)
+  const filtered = clinicFilter === "all" ? hw : hw.filter(h => h.clinic === clinicFilter);
+  const filteredStats = clinicFilter === "all" ? hwStats : {
     total:          filtered.length,
     active:         filtered.filter(h=>h.assetstatus==="active").length,
     inactive:       filtered.filter(h=>h.assetstatus==="inactive").length,
@@ -430,31 +518,35 @@ function DashboardSection({ hw, sw, history, historyCount, trash, isMobile, onHw
     disposed:       filtered.filter(h=>h.assetstatus==="disposed").length,
     dispose_target: filtered.filter(h=>h.assetstatus==="dispose_target").length,
   };
-  const clinicCounts = Object.entries(CLINICS).filter(([k])=>k!=="all").map(([k,v])=>({
-    key:k, name:v, count: hw.filter(h=>h.clinic===k).length,
-  }));
 
-  const trashCount = Array.isArray(trash) ? trash.length : 0;
-  const trashHW = Array.isArray(trash) ? trash.filter(t=>(t.table_name||"assets")==="assets").length : 0;
-  const trashSW = Array.isArray(trash) ? trash.filter(t=>t.table_name==="software").length : 0;
-
-  // 상태별 카드 — statusKey를 직접 사용해 badge 색상/텍스트를 STATUS_BADGE·ASSET_STATUS에서 가져옴
   const statusCards = [
-    { label:"전체 장비",  statusKey:null,             value:hwStats.total,          textColor:"#0f6e56" },
-    { label:"사용중",     statusKey:"active",          value:hwStats.active,          textColor:"#2563eb" },
-    { label:"미사용",     statusKey:"inactive",        value:hwStats.inactive,        textColor:"#64748b" },
-    { label:"수리중",     statusKey:"repair",          value:hwStats.repair,          textColor:"#c2410c" },
-    { label:"폐기",       statusKey:"disposed",        value:hwStats.disposed,        textColor:"#cf1322" },
-    { label:"폐기대상",   statusKey:"dispose_target",  value:hwStats.dispose_target,  textColor:"#d97706" },
-    { label:"소프트웨어", statusKey:null,              value:sw.length,               textColor:"#7c3aed" },
-    { label:"활동 로그",  statusKey:null,              value:historyCount>0?historyCount:history.length, textColor:"#0891b2" },
-    { label:"휴지통",     statusKey:null,              value:trashCount,              textColor:"#94a3b8", sub:`장비 ${trashHW} · SW ${trashSW}` },
+    { label:"전체 장비",  statusKey:null,            value:filteredStats.total,          textColor:"#0f6e56" },
+    { label:"사용중",     statusKey:"active",         value:filteredStats.active,          textColor:"#2563eb" },
+    { label:"미사용",     statusKey:"inactive",       value:filteredStats.inactive,        textColor:"#64748b" },
+    { label:"수리중",     statusKey:"repair",         value:filteredStats.repair,          textColor:"#c2410c" },
+    { label:"폐기",       statusKey:"disposed",       value:filteredStats.disposed,        textColor:"#cf1322" },
+    { label:"폐기대상",   statusKey:"dispose_target", value:filteredStats.dispose_target,  textColor:"#d97706" },
+    { label:"소프트웨어", statusKey:null,             value:swTotal,                       textColor:"#7c3aed" },
+    { label:"활동 로그",  statusKey:null,             value:historyCount>0?historyCount:history.length, textColor:"#0891b2" },
+    { label:"휴지통",     statusKey:null,             value:trashCount,                    textColor:"#94a3b8", sub:`장비 ${trashHW} · SW ${trashSW}` },
   ];
+
+  // dashStats 로딩 중 표시
+  const isLoading = !dashStats && hw.length === 0;
 
   return (
     <div>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
-        <h2 style={{ fontSize:22, fontWeight:700, margin:0 }}>실시간 현황</h2>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:8 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+          <h2 style={{ fontSize:22, fontWeight:700, margin:0 }}>실시간 현황</h2>
+          {/* DB 직접 집계 여부 표시 */}
+          <span style={{ fontSize:11, padding:"3px 8px", borderRadius:10,
+            background: dashStats ? "#e8f5e9" : "#fef3c7",
+            color:      dashStats ? "#0f6e56" : "#d97706",
+            fontWeight: 600 }}>
+            {dashStats ? "✅ DB 정확값" : "⏳ 로딩 중..."}
+          </span>
+        </div>
         <select value={clinicFilter} onChange={e=>setClinicFilter(e.target.value)}
           style={{ padding:"8px 12px", borderRadius:10, border:"1px solid #ddd", fontSize:13 }}>
           {Object.entries(CLINICS).map(([k,v])=><option key={k} value={k}>{v}</option>)}
