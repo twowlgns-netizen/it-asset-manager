@@ -230,11 +230,20 @@ const api = {
     return safeJson(res);
   },
   deleteTrash: (id) => fetch(`${BASE_URL}/trash?id=eq.${id}`, { method:"DELETE", headers:H }).then(safeJson),
-  // 다건 한 번에 삭제 (PostgREST in 연산자)
-  deleteTrashBulk: (ids) => {
-    if (!ids || ids.length === 0) return Promise.resolve();
-    const list = ids.join(",");
-    return fetch(`${BASE_URL}/trash?id=in.(${list})`, { method:"DELETE", headers:H }).then(safeJson);
+  // 다건 삭제 - 청크 단위로 분할하여 URL 길이 제한 및 RLS 문제 회피
+  deleteTrashBulk: async (ids) => {
+    if (!ids || ids.length === 0) return;
+    const CHUNK = 100; // 100건씩 나눠서 삭제
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const chunk = ids.slice(i, i + CHUNK);
+      const list  = chunk.join(",");
+      const res   = await fetch(`${BASE_URL}/trash?id=in.(${list})`, { method:"DELETE", headers:H });
+      // 204 No Content는 정상
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(`HTTP ${res.status}: ${txt}`);
+      }
+    }
   },
 
   // ── 대시보드 전용: DB에서 직접 count 조회 (프론트 배열 의존 제거)
@@ -2718,71 +2727,106 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
     }).catch(err => alert("영구삭제 오류: " + err.message));
   };
 
-  // ── 선택 영구삭제 (배치: 단 1번 요청으로 전체 삭제)
+  // ── 선택 영구삭제 (청크 배치: 100건씩 묶어서 삭제)
   const deleteSelectedForever = async () => {
     if (selectedIds.size === 0) return alert("삭제할 항목을 선택하세요.");
     if (!window.confirm(`선택한 ${selectedIds.size}건을 영구 삭제하시겠습니까?\n복구할 수 없습니다.`)) return;
     setLoading(true);
     const ids = [...selectedIds];
+    // 로그용 메타 수집 (삭제 전)
+    const targets = ids.map(id => trash.find(t => t.id === id)).filter(Boolean);
     try {
-      // 로그용 메타 수집 (삭제 전)
-      const targets = ids.map(id => trash.find(t => t.id === id)).filter(Boolean);
-      // ★ 단 1번의 DELETE 요청으로 전체 삭제
+      // 100건씩 청크로 나눠 순차 삭제 → URL 길이 제한·RLS 문제 회피
       await api.deleteTrashBulk(ids);
       // 상태 즉시 반영
-      setTrash(prev => prev.filter(t => !selectedIds.has(t.id)));
-      // 로그 기록 (일괄)
+      const delSet = new Set(ids);
+      setTrash(prev => prev.filter(t => !delSet.has(t.id)));
+      // 로그 일괄 기록
       targets.forEach(trashItem => {
         const orig  = getData(trashItem);
         const name  = orig.gccode || orig.modelname || orig.name || "항목";
         const table = getTable(trashItem);
         const aType = table === "assets" ? "hardware" : "software";
-        addHistory("영구 삭제", aType, trashItem.id, name, "휴지통에서 영구 삭제 (선택삭제)", JSON.stringify(orig), "");
+        addHistory("영구 삭제", aType, trashItem.id, name,
+          "휴지통에서 영구 삭제 (선택삭제)", JSON.stringify(orig), "");
       });
       setSelectedIds(new Set());
       alert(`${ids.length}건이 영구 삭제됐습니다.`);
     } catch(err) {
-      alert("삭제 오류: " + err.message);
+      // 에러 발생 시 실제 서버 응답 메시지 포함해서 표시
+      alert("삭제 오류: " + (err.message || String(err)));
     } finally {
       setLoading(false);
       await refreshTrash();
     }
   };
 
-  // ── 선택 복구 (병렬 처리: Promise.allSettled)
+  // ── 선택 복구 (동시 실행 5개 제한 → Supabase rate limit 회피)
   const restoreSelected = async () => {
     if (selectedIds.size === 0) return alert("복구할 항목을 선택하세요.");
     if (!window.confirm(`선택한 ${selectedIds.size}건을 복구하시겠습니까?`)) return;
     setLoading(true);
+
     const targets = [...selectedIds]
       .map(id => trash.find(t => t.id === id))
       .filter(Boolean);
 
-    const results = await Promise.allSettled(targets.map(async trashItem => {
-      const orig  = getData(trashItem);
-      const table = getTable(trashItem);
-      const rest  = Object.fromEntries(Object.entries(orig).filter(([k]) => !DB_AUTO_COLS.includes(k)));
-      const name  = rest.gccode || rest.modelname || rest.name || "항목";
-      const aType = table === "assets" ? "hardware" : "software";
-      // 휴지통 삭제 + 원본 복구 병렬 아님(순서 보장 필요) → 순차지만 항목들 간엔 병렬
-      await api.deleteTrash(trashItem.id);
-      const res  = await fetch(`${BASE_URL}/${table}`, {
-        method:"POST", headers:{...H,"Prefer":"return=representation"}, body: JSON.stringify(rest)
-      }).then(safeJson);
-      const item = Array.isArray(res) ? res[0] : res;
-      if (table === "assets")        setHw(prev => [...prev, item]);
-      else if (table === "software") setSw(prev => [...prev, item]);
-      setTrash(prev => prev.filter(t => t.id !== trashItem.id));
-      addHistory("데이터 복구", aType, item?.id, name, `휴지통에서 복구 (선택복구)`, "", JSON.stringify(rest));
-    }));
+    const CONCURRENCY = 5; // 동시에 최대 5개만 실행
+    let ok = 0, fail = 0;
+    const failedNames = [];
 
-    const ok   = results.filter(r => r.status === "fulfilled").length;
-    const fail = results.filter(r => r.status === "rejected").length;
+    // concurrency-limited pool 실행
+    const queue = [...targets];
+    const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+      while (queue.length > 0) {
+        const trashItem = queue.shift();
+        if (!trashItem) continue;
+        const orig  = getData(trashItem);
+        const table = getTable(trashItem);
+        const rest  = Object.fromEntries(
+          Object.entries(orig).filter(([k]) => !DB_AUTO_COLS.includes(k))
+        );
+        const name  = rest.gccode || rest.modelname || rest.name || "항목";
+        const aType = table === "assets" ? "hardware" : "software";
+        try {
+          // ① 휴지통에서 삭제
+          const delRes = await fetch(`${BASE_URL}/trash?id=eq.${trashItem.id}`,
+            { method:"DELETE", headers:H });
+          if (!delRes.ok) throw new Error(`휴지통 삭제 실패 HTTP ${delRes.status}`);
+
+          // ② 원본 테이블에 복구
+          const addRes = await fetch(`${BASE_URL}/${table}`,
+            { method:"POST", headers:{...H,"Prefer":"return=representation"}, body: JSON.stringify(rest) });
+          if (!addRes.ok) throw new Error(`복구 INSERT 실패 HTTP ${addRes.status}`);
+          const json = await addRes.json().catch(() => []);
+          const item = Array.isArray(json) ? json[0] : json;
+
+          // ③ 상태 반영
+          setTrash(prev => prev.filter(t => t.id !== trashItem.id));
+          if (table === "assets")        setHw(prev => [...prev, item]);
+          else if (table === "software") setSw(prev => [...prev, item]);
+          addHistory("데이터 복구", aType, item?.id, name,
+            "휴지통에서 복구 (선택복구)", "", JSON.stringify(rest));
+          ok++;
+        } catch(e) {
+          fail++;
+          failedNames.push(name);
+          console.error("[restoreSelected] 복구 실패:", name, e.message);
+        }
+      }
+    });
+
+    await Promise.all(workers);
+
     setSelectedIds(new Set());
     setLoading(false);
     await refreshTrash();
-    if (fail > 0) alert(`완료: ${ok}건 복구, ${fail}건 실패`);
-    else          alert(`${ok}건이 복구됐습니다.`);
+
+    if (fail > 0) {
+      alert(`완료: ${ok}건 복구 성공, ${fail}건 실패\n실패 항목: ${failedNames.slice(0,5).join(", ")}${failedNames.length>5?` 외 ${failedNames.length-5}건`:""}`);
+    } else {
+      alert(`${ok}건이 복구됐습니다.`);
+    }
   };
 
   return (
