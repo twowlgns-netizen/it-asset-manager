@@ -751,13 +751,19 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
     saveColPref(hwColPrefKey, n); setVisibleCols(n);
   };
 
+  const KNOWN_CLINIC_KEYS = Object.keys(CLINICS).filter(k => k !== "all");
+
   const filtered = useMemo(() => data.filter(h => {
     const q = searchText.trim().toLowerCase();
     const matchText = !q || [h.gccode,h.imedcode,h.username,h.team,h.modelname,h.location,h.pcname,h.serialnumber,h.notes]
       .some(v=>(v||"").toLowerCase().includes(q));
     const matchStatus = !filterStatus || h.assetstatus===filterStatus;
     const matchType   = !filterType   || h.assettype===filterType;
-    const matchClinic = filterClinic==="all" || h.clinic===filterClinic;
+    const matchClinic = filterClinic==="all"
+      ? true
+      : filterClinic==="__unclassified__"
+        ? !KNOWN_CLINIC_KEYS.includes(h.clinic)
+        : h.clinic===filterClinic;
     return matchText && matchStatus && matchType && matchClinic;
   }), [data, searchText, filterStatus, filterType, filterClinic]);
 
@@ -1202,6 +1208,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
           </div>
           <select value={filterClinic} onChange={e=>setFilterClinic(e.target.value)} style={{padding:"9px 10px",borderRadius:10,border:"1px solid #ddd",fontSize:13,background:"#fff"}}>
             {Object.entries(CLINICS).map(([k,v])=><option key={k} value={k}>{v}</option>)}
+            <option value="__unclassified__">미분류/기타</option>
           </select>
           <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} style={{padding:"9px 10px",borderRadius:10,border:"1px solid #ddd",fontSize:13,background:"#fff"}}>
             <option value="">상태 전체</option>
