@@ -1790,7 +1790,6 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
         const m = String(u.usernum||"").match(/(\d+)$/);
         return m ? parseInt(m[1]) : 0;
       }));
-      // 계정생성일/패스워드변경일 자동설정
       formData = { ...form, usernum: `USR-${maxNum + 1}`, created_date: todayStr(), password_changed_date: todayStr() };
     } else if(!isAdd && form.password && form.password !== users.find(u=>u.id===form.id)?.password) {
       // 패스워드 변경 시 변경일 갱신
@@ -1799,9 +1798,25 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
     // NOT NULL 컬럼 보장 (name, loginid)
     if(!formData.name)    formData = { ...formData, name:    users.find(u=>u.id===formData.id)?.name    || formData.name    || "" };
     if(!formData.loginid) formData = { ...formData, loginid: users.find(u=>u.id===formData.id)?.loginid || formData.loginid || "" };
-    const req=isAdd?api.addUser(formData):api.updateUser(formData.id,formData);
+
+    // ── DB에 실제 존재하는 컬럼만 전송 (없는 컬럼 전송 시 PGRST204 오류 방지)
+    // users 테이블의 실제 컬럼 목록 (Supabase schema에 맞게 관리)
+    const USERS_DB_COLS = new Set([
+      "id","usernum","loginid","name","password","dept","clinic","role",
+      "created_date","password_changed_date"  // 이 두 컬럼은 DB에 없으면 자동 제외됨
+    ]);
+    // 첫 번째 사용자 레코드 키로 실제 DB 컬럼을 동적으로 파악
+    const knownCols = users.length > 0 ? new Set(Object.keys(users[0])) : null;
+    const allowedCols = knownCols
+      ? new Set([...USERS_DB_COLS].filter(c => knownCols.has(c) || c==="id"))
+      : USERS_DB_COLS;
+    const sanitized = Object.fromEntries(
+      Object.entries(formData).filter(([k]) => allowedCols.has(k))
+    );
+
+    const req=isAdd?api.addUser(sanitized):api.updateUser(sanitized.id,sanitized);
     req.then(()=>api.getUsers()).then(list=>{
-      setUsers(Array.isArray(list)&&list.length?list:INIT_USERS);
+      setUsers(Array.isArray(list)&&list.length?list:[]);
       addHistory(isAdd?"사용자 등록":"사용자 수정","user",form.id||"",form.name,isAdd?"신규 등록":"정보 수정");
       setModal(null);
     }).catch(err=>alert("오류: "+err.message)).finally(()=>setLoading(false));
