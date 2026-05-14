@@ -80,8 +80,12 @@ const todayStr = () => new Date().toISOString().slice(0,10);
 const safeJson = async (res) => {
   if (!res.ok) { const t = await res.text().catch(()=>""); throw new Error(`HTTP ${res.status}: ${t}`); }
   const t = await res.text();
-  if (!t || !t.trim()) return {};
-  try { return JSON.parse(t); } catch { return {}; }
+  if (!t || !t.trim()) return [];
+  try {
+    const parsed = JSON.parse(t);
+    // Supabase SELECT는 배열 반환, POST/PATCH는 배열 또는 객체 반환
+    return parsed;
+  } catch { return []; }
 };
 
 // 클라이언트 IP 조회 (공인 IP)
@@ -122,12 +126,12 @@ const triggerDownload = (blob, name) => {
 // ================================================================
 const api = {
   // 자산
-  getHW:    () => fetch(`${BASE_URL}/assets?select=*&order=num.asc.nullslast,created_at.desc&limit=100000`, { headers: {...H,"Range-Unit":"items","Range":"0-99999"} }).then(safeJson),
+  getHW:    () => fetch(`${BASE_URL}/assets?select=*&order=num.asc.nullslast,created_at.desc`, { headers: H }).then(safeJson),
   addHW:    (d) => fetch(`${BASE_URL}/assets`, { method:"POST", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(d) }).then(safeJson),
   updateHW: (id,d) => fetch(`${BASE_URL}/assets?id=eq.${id}`, { method:"PATCH", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(d) }).then(safeJson),
   deleteHW: (id) => fetch(`${BASE_URL}/assets?id=eq.${id}`, { method:"DELETE", headers:H }).then(safeJson),
   // 소프트웨어
-  getSW:    () => fetch(`${BASE_URL}/software?select=*&order=created_at.desc&limit=100000`, { headers: {...H,"Range-Unit":"items","Range":"0-99999"} }).then(safeJson),
+  getSW:    () => fetch(`${BASE_URL}/software?select=*&order=created_at.desc`, { headers: H }).then(safeJson),
   addSW:    (d) => fetch(`${BASE_URL}/software`, { method:"POST", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(d) }).then(safeJson),
   updateSW: (id,d) => fetch(`${BASE_URL}/software?id=eq.${id}`, { method:"PATCH", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(d) }).then(safeJson),
   deleteSW: (id) => fetch(`${BASE_URL}/software?id=eq.${id}`, { method:"DELETE", headers:H }).then(safeJson),
@@ -137,7 +141,7 @@ const api = {
   updateUser:  (id,d) => fetch(`${BASE_URL}/users?id=eq.${id}`, { method:"PATCH", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(d) }).then(safeJson),
   deleteUser:  (id) => fetch(`${BASE_URL}/users?id=eq.${id}`, { method:"DELETE", headers:H }).then(safeJson),
   // 히스토리 (최신 1000건 + 전체 건수 별도 조회)
-  getHistory: () => fetch(`${BASE_URL}/history?select=*&order=ts.desc&limit=1000`, { headers:{...H,"Range-Unit":"items","Range":"0-999"} }).then(safeJson),
+  getHistory: () => fetch(`${BASE_URL}/history?select=*&order=ts.desc&limit=1000`, { headers:H }).then(safeJson),
   getHistoryCount: async () => {
     const res = await fetch(`${BASE_URL}/history?select=id`, { headers:{...H,"Prefer":"count=exact","Range-Unit":"items","Range":"0-0"} });
     const ct = res.headers.get("Content-Range"); // e.g. "0-0/1234"
@@ -146,7 +150,7 @@ const api = {
   },
   addHistory: (d) => fetch(`${BASE_URL}/history`, { method:"POST", headers:H, body:JSON.stringify(d) }).then(safeJson),
   // 휴지통
-  getTrash:    () => fetch(`${BASE_URL}/trash?select=*&order=created_at.desc&limit=100000`, { headers:{...H,"Range-Unit":"items","Range":"0-99999"} }).then(safeJson),
+  getTrash:    () => fetch(`${BASE_URL}/trash?select=*&order=created_at.desc`, { headers:H }).then(safeJson),
   addTrash: async (d) => {
     // item_data는 jsonb 컬럼 → 반드시 JS 객체로 전송
     const itemObj = typeof d.item_data === "string"
@@ -513,9 +517,9 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
       try {
         // ① 휴지통 저장 먼저 (item 객체 그대로 전달 - API에서 jsonb 처리)
         const trashResult = await api.addTrash({ item_data: item, table_name:"assets", deletedat:nowISO() });
-        // 배열/객체 모두 허용 - null·빈객체인 경우만 실패 처리
+        // 배열/객체 모두 허용 - id가 있으면 성공
         const saved = Array.isArray(trashResult) ? trashResult[0] : trashResult;
-        if (!saved || (typeof saved === "object" && Object.keys(saved).length === 0)) throw new Error("휴지통 저장 실패");
+        if (!saved || !saved.id) throw new Error("휴지통 저장 실패");
         // ② 휴지통 저장 성공 후 원본 삭제
         await api.deleteHW(item.id);
         // ③ UI에 즉시 반영 (페이지 이동 전 휴지통에 보이도록)
@@ -568,7 +572,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
       })
       .then(t => {
         setHw(prev=>prev.filter(h=>h.id!==item.id));
-        if(t && Object.keys(t).length > 0) setTrash(prev=>[...prev,t]);
+        if(t && t.id) setTrash(prev=>[...prev,t]);
         addHistory("하드웨어 삭제","hardware",item.id,name,"휴지통 이동",JSON.stringify(item),"");
       }).catch(err=>alert("삭제 오류: "+err.message));
   };
