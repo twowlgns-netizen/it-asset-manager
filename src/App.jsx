@@ -193,6 +193,7 @@ export default function App() {
   const [isLoggedIn,  setIsLoggedIn]  = useState(() => localStorage.getItem("isLoggedIn") === "true");
   const [currentUser, setCurrentUser] = useState(() => { const s = localStorage.getItem("currentUser"); return s ? JSON.parse(s) : null; });
   const [view,    setView]    = useState("dashboard");
+  const [hwClinicFilter, setHwClinicFilter] = useState("all");
   const [isMobile,setIsMobile]= useState(typeof window!=="undefined" ? window.innerWidth<768 : false);
   const [hw,      setHw]      = useState([]);
   const [sw,      setSw]      = useState([]);
@@ -297,7 +298,10 @@ export default function App() {
 
   const menuItems = [
     { id: "dashboard", label: "홈",       icon: "🏠" },
-    { id: "hardware",  label: "장비",     icon: "🖥️" },
+    { id: "hardware",  label: "장비 (전체)", icon: "🖥️" },
+    { id: "hw_gangnam",   label: "　강남의원",   icon: "🏥", clinicKey:"gangnam"  },
+    { id: "hw_gangbuk",   label: "　강북의원",   icon: "🏥", clinicKey:"gangbuk"  },
+    { id: "hw_seoulsup",  label: "　서울숲의원", icon: "🏥", clinicKey:"seoulsup" },
     { id: "software",  label: "소프트웨어", icon: "💿" },
     { id: "users",     label: "사용자",   icon: "👤" },
     { id: "qrscan",    label: "QR 스캔",  icon: "📷" },
@@ -312,10 +316,23 @@ export default function App() {
           <div onClick={()=>{ setView("dashboard"); window.location.reload(); }} style={{ fontSize:16, fontWeight:800, color:"#0f6e56", marginBottom:28, cursor:"pointer", userSelect:"none" }}>IT Asset Manager</div>
           <div style={{ flex:1 }}>
             {menuItems.map(m => (
-              <div key={m.id} onClick={()=>setView(m.id)}
+              <div key={m.id} onClick={()=>{
+                  if(m.clinicKey !== undefined){
+                    setView("hardware"); setHwClinicFilter(m.clinicKey);
+                  } else {
+                    setView(m.id);
+                    if(m.id==="hardware") setHwClinicFilter("all");
+                  }
+                }}
                 style={{ padding:"10px 14px", borderRadius:10, cursor:"pointer", display:"flex", alignItems:"center", gap:8,
-                  background:view===m.id?"#e8f5e9":"transparent", color:view===m.id?"#0f6e56":"#64748b",
-                  fontWeight:700, marginBottom:3, fontSize:13 }}>
+                  background: m.clinicKey!==undefined
+                    ? (view==="hardware" && hwClinicFilter===m.clinicKey ? "#e8f5e9" : "transparent")
+                    : (view===m.id && (!m.clinicKey) ? "#e8f5e9" : "transparent"),
+                  color: m.clinicKey!==undefined
+                    ? (view==="hardware" && hwClinicFilter===m.clinicKey ? "#0f6e56" : "#94a3b8")
+                    : (view===m.id && hwClinicFilter==="all"||view===m.id&&!["hardware"].includes(m.id) ? "#0f6e56" : "#64748b"),
+                  fontWeight: m.clinicKey!==undefined ? 500 : 700,
+                  marginBottom:3, fontSize: m.clinicKey!==undefined ? 12 : 13 }}>
                 <span>{m.icon}</span>{m.label}
               </div>
             ))}
@@ -334,7 +351,7 @@ export default function App() {
         )}
         <main style={{ padding:isMobile?"16px":"32px", paddingBottom:isMobile?96:40 }}>
           {view==="dashboard"  && <DashboardSection  hw={hw} sw={sw} history={history} historyCount={historyCount} isMobile={isMobile} />}
-          {view==="hardware"   && <HardwareSection   data={hw} setHw={setHw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} setView={setView} />}
+          {view==="hardware"   && <HardwareSection   data={hw} setHw={setHw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} setView={setView} initClinic={hwClinicFilter} />}
           {view==="software"   && <SoftwareSection   data={sw} setSw={setSw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} />}
           {view==="users"      && <UsersSection      users={users} setUsers={setUsers} addHistory={addHistory} isAdmin={isAdmin} currentUser={currentUser} />}
           {view==="history"    && <HistorySection    history={history} />}
@@ -453,7 +470,7 @@ function DashboardSection({ hw, sw, history, historyCount, isMobile }) {
 // ================================================================
 // 🖥️ [하드웨어]
 // ================================================================
-function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, currentUser, setView }) {
+function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, currentUser, setView, initClinic }) {
   const [modal,        setModal]        = useState(null);
   const [form,         setForm]         = useState({});
   const [detailItem,   setDetailItem]   = useState(null);
@@ -464,7 +481,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
   const [searchText,   setSearchText]   = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterType,   setFilterType]   = useState("");
-  const [filterClinic, setFilterClinic] = useState("all");
+  const [filterClinic, setFilterClinic] = useState(initClinic||"all");
   const [showColMenu,  setShowColMenu]  = useState(false);
   const [selectedIds,  setSelectedIds]  = useState(new Set());
   const [pageSize,     setPageSize]     = useState(20);
@@ -478,6 +495,9 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
     const h = (e) => { if (colMenuRef.current && !colMenuRef.current.contains(e.target)) setShowColMenu(false); };
     document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h);
   }, []);
+
+  // 사이드바 지점 메뉴 클릭 시 필터 동기화
+  useEffect(() => { setFilterClinic(initClinic||"all"); setCurrentPage(1); }, [initClinic]);
 
   const toggleCol = (key) => setVisibleCols(prev => {
     const n=new Set(prev); n.has(key)?n.delete(key):n.add(key);
@@ -880,9 +900,9 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
           <span>페이지당</span>
           <select value={pageSize} onChange={e=>{setPageSize(Number(e.target.value));setCurrentPage(1);}}
             style={{padding:"5px 8px",borderRadius:8,border:"1px solid #ddd",fontSize:13,background:"#fff"}}>
-            {[10,20,30,50,100].map(n=><option key={n} value={n}>{n}개</option>)}
+            {[10,20,50,100,500,1000,0].map(n=><option key={n} value={n}>{n===0?"전체보기":n+"개"}</option>)}
           </select>
-          <span style={{fontSize:12}}>({filtered.length===0?"0":((currentPage-1)*pageSize+1)}–{Math.min(currentPage*pageSize,filtered.length)} / {filtered.length}건)</span>
+          <span style={{fontSize:12}}>({pageSize===0?"전체":filtered.length===0?"0":((currentPage-1)*pageSize+1)+"–"+Math.min(currentPage*pageSize,filtered.length)} / {filtered.length}건)</span>
         </div>
         {totalPages>1 && (
           <div style={{display:"flex",gap:4,alignItems:"center"}}>
@@ -899,7 +919,8 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
           </div>
         )}
       </div>
-      <ResponsiveTable cols={activeCols} rows={pagedRows} empty="등록된 자산이 없습니다." />
+      <ResponsiveTable cols={activeCols} rows={pagedRows} empty="등록된 자산이 없습니다."
+        onRowDoubleClick={canEdit ? (row)=>{setForm({...row});setModal("edit");} : undefined} />
 
       {(modal==="add"||modal==="edit") && (
         <Modal title={modal==="add"?"새 자산 등록":"자산 정보 수정"} onClose={()=>setModal(null)}>
@@ -1329,9 +1350,9 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
           <span>페이지당</span>
           <select value={pageSize} onChange={e=>{setPageSize(Number(e.target.value));setCurrentPage(1);}}
             style={{padding:"5px 8px",borderRadius:8,border:"1px solid #ddd",fontSize:13,background:"#fff"}}>
-            {[10,20,30,50,100].map(n=><option key={n} value={n}>{n}개</option>)}
+            {[10,20,50,100,500,1000,0].map(n=><option key={n} value={n}>{n===0?"전체보기":n+"개"}</option>)}
           </select>
-          <span style={{fontSize:12}}>({filtered.length===0?"0":((currentPage-1)*pageSize+1)}–{Math.min(currentPage*pageSize,filtered.length)} / {filtered.length}건)</span>
+          <span style={{fontSize:12}}>({pageSize===0?"전체":filtered.length===0?"0":((currentPage-1)*pageSize+1)+"–"+Math.min(currentPage*pageSize,filtered.length)} / {filtered.length}건)</span>
         </div>
         {totalPages>1 && (
           <div style={{display:"flex",gap:4,alignItems:"center"}}>
@@ -1347,7 +1368,8 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
           </div>
         )}
       </div>
-      <ResponsiveTable cols={activeSWCols} rows={pagedRows} empty="등록된 소프트웨어가 없습니다."/>
+      <ResponsiveTable cols={activeSWCols} rows={pagedRows} empty="등록된 소프트웨어가 없습니다."
+        onRowDoubleClick={canEdit ? (row)=>{setForm({...row});setModal("edit");} : undefined}/>
       {(modal==="add"||modal==="edit")&&(
         <Modal title={modal==="add"?"소프트웨어 등록":"소프트웨어 수정"} onClose={()=>setModal(null)}>
           <SWForm form={form} setForm={setForm} onSave={save} loading={loading}/>
@@ -2285,7 +2307,7 @@ function Modal({title,onClose,children}){
     </div>
   );
 }
-function ResizeHandle({ onResize }) {
+function ResizeHandle({ onResize, onDoubleClick }) {
   const startRef = useRef(null);
   const handleMouseDown = (e) => {
     e.preventDefault();
@@ -2308,6 +2330,7 @@ function ResizeHandle({ onResize }) {
   return (
     <div
       onMouseDown={handleMouseDown}
+      onDoubleClick={(e)=>{ e.stopPropagation(); onDoubleClick && onDoubleClick(); }}
       style={{position:"absolute",right:0,top:0,bottom:0,width:6,cursor:"col-resize",zIndex:10,
         background:"transparent",borderRight:"2px solid transparent",transition:"border-color 0.15s"}}
       onMouseEnter={e=>e.currentTarget.style.borderRightColor="#0f6e56"}
@@ -2315,17 +2338,79 @@ function ResizeHandle({ onResize }) {
     />
   );
 }
-function ResponsiveTable({cols,rows,empty="데이터가 없습니다."}){
+function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowDoubleClick}){
   const calcW = (c) => {
     if(c.minWidth) return c.minWidth;
     const lbl = typeof c.label==="function" ? "" : (c.label||"");
-    // 한국어 기준: 글자당 16px + 좌우 패딩 32px
     return Math.max(80, lbl.length * 16 + 32);
   };
-  const [colWidths, setColWidths] = useState(() => cols.map(calcW));
+  const [colWidths,   setColWidths]   = useState(() => cols.map(calcW));
+  const [selectedRow, setSelectedRow] = useState(null); // 기능2: 선택된 행
+  const [sortKey,     setSortKey]     = useState(null);  // 기능5,6: 정렬 컬럼
+  const [sortDir,     setSortDir]     = useState("asc"); // "asc" | "desc"
+  const [ctxMenu,     setCtxMenu]     = useState(null);  // {x,y,colIdx}
+  const ctxRef = useRef(null);
+
   useEffect(() => {
     setColWidths(prev => prev.length !== cols.length ? cols.map(calcW) : prev);
   }, [cols.length]);
+
+  // 컨텍스트 메뉴 바깥 클릭 시 닫기
+  useEffect(() => {
+    const h = (e) => { if(ctxRef.current && !ctxRef.current.contains(e.target)) setCtxMenu(null); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  // 기능5,6: 정렬 처리
+  const sortedRows = (() => {
+    if(!sortKey) return rows;
+    const col = cols[sortKey];
+    if(!col || col.noClip === true || typeof col.render === "function") return rows; // render 컬럼은 정렬 불가
+    return [...rows].sort((a, b) => {
+      const av = (a[col.key] ?? "").toString().toLowerCase();
+      const bv = (b[col.key] ?? "").toString().toLowerCase();
+      const n1 = parseFloat(av), n2 = parseFloat(bv);
+      if(!isNaN(n1) && !isNaN(n2)) return sortDir==="asc" ? n1-n2 : n2-n1;
+      return sortDir==="asc" ? av.localeCompare(bv,"ko") : bv.localeCompare(av,"ko");
+    });
+  })();
+
+  const handleColHeaderClick = (i) => {
+    const col = cols[i];
+    if(!col || typeof col.label === "function" || col.noClip) return; // 체크박스 컬럼 등 제외
+    if(sortKey === i) setSortDir(d => d==="asc" ? "desc" : "asc");
+    else { setSortKey(i); setSortDir("asc"); }
+    setCtxMenu(null);
+  };
+
+  const handleColHeaderRightClick = (e, i) => {
+    const col = cols[i];
+    if(!col || typeof col.label === "function" || col.noClip) return;
+    e.preventDefault();
+    setCtxMenu({ x: e.clientX, y: e.clientY, colIdx: i });
+  };
+
+  // 기능4: 컬럼 구분선 더블클릭 → 내용 길이 기준 자동 너비
+  const autoFitCol = (i) => {
+    const col = cols[i];
+    if(!col) return;
+    const lbl = typeof col.label === "function" ? "" : (col.label || "");
+    const labelW = lbl.length * 13 + 40;
+    // 최대 30행 기준으로 내용 길이 측정 (render 없는 컬럼만)
+    let maxContentW = labelW;
+    if(col.key && !col.render) {
+      const sample = rows.slice(0, 30);
+      sample.forEach(row => {
+        const val = String(row[col.key] ?? "");
+        // 한글: 2배, 영문: 1배 가중치
+        const w = [...val].reduce((a, ch) => a + (ch.charCodeAt(0) > 127 ? 16 : 9), 0) + 32;
+        if(w > maxContentW) maxContentW = w;
+      });
+    }
+    const newW = Math.min(Math.max(maxContentW, 60), 400);
+    setColWidths(prev => { const next=[...prev]; next[i]=newW; return next; });
+  };
 
   const handleResize = (i, delta) => {
     setColWidths(prev => {
@@ -2340,7 +2425,6 @@ function ResponsiveTable({cols,rows,empty="데이터가 없습니다."}){
   const trackRef  = useRef(null);
   const totalWidth = colWidths.reduce((a,b)=>a+b,0);
 
-  // 테이블 스크롤 ↔ 썸네일 동기화
   const syncThumb = () => {
     const el = scrollRef.current; const tr = trackRef.current; const th = thumbRef.current;
     if(!el||!tr||!th) return;
@@ -2363,8 +2447,6 @@ function ResponsiveTable({cols,rows,empty="데이터가 없습니다."}){
     return () => { el.removeEventListener("scroll", syncThumb); ro.disconnect(); };
   }, [totalWidth, colWidths]);
 
-  // 썸 드래그
-  const thumbDragRef = useRef(null);
   const startThumbDrag = (e) => {
     e.preventDefault();
     const el = scrollRef.current; const tr = trackRef.current; const th = thumbRef.current;
@@ -2387,9 +2469,19 @@ function ResponsiveTable({cols,rows,empty="데이터가 없습니다."}){
     window.addEventListener("mouseup", onUp);
   };
 
+  // 기능1: 줄 색상 팔레트 (엑셀 스타일 - 짝수/홀수 교번)
+  const rowBg = (ri, isSelected) => {
+    if(isSelected) return "#d1fae5"; // 선택된 행: 민트 그린
+    return ri % 2 === 0 ? "#ffffff" : "#f8fafc"; // 홀짝 교번
+  };
+
+  const sortIndicator = (i) => {
+    if(sortKey !== i) return <span style={{color:"#d1d5db",fontSize:9,marginLeft:3}}>⇅</span>;
+    return <span style={{color:"#0f6e56",fontSize:9,marginLeft:3}}>{sortDir==="asc"?"▲":"▼"}</span>;
+  };
+
   return (
-    <div style={{background:"#fff",borderRadius:14,border:"1px solid #eee",display:"flex",flexDirection:"column"}}>
-      {/* 테이블 영역 - 가로 스크롤, 세로 스크롤바 없음 */}
+    <div style={{background:"#fff",borderRadius:14,border:"1px solid #eee",display:"flex",flexDirection:"column",position:"relative"}}>
       <div ref={scrollRef} style={{overflowX:"auto",overflowY:"visible",scrollbarWidth:"none",msOverflowStyle:"none"}}
         onScroll={syncThumb}>
         <style>{".hw-no-sb::-webkit-scrollbar{display:none}"}</style>
@@ -2399,40 +2491,95 @@ function ResponsiveTable({cols,rows,empty="데이터가 없습니다."}){
             {colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}
           </colgroup>
           <thead>
-            <tr style={{background:"#f8fafc"}}>
-              {cols.map((c,i)=>(
-                <th key={i} style={{padding:i===0?"10px 4px":"12px 12px",textAlign:i===0?"center":"left",fontSize:11,color:"#94a3b8",
-                  borderBottom:"1px solid #f0f0f0",whiteSpace:"nowrap",fontWeight:600,
-                  position:"relative",userSelect:"none",overflow:"visible",boxSizing:"border-box"}}>
-                  <span style={{display:"block",overflow:"hidden",textOverflow:"ellipsis",paddingRight:i===0?0:8}}>{typeof c.label==="function"?c.label():c.label}</span>
-                  <ResizeHandle onResize={delta=>handleResize(i,delta)}/>
+            {/* 기능1: 헤더에도 배경색 */}
+            <tr style={{background:"linear-gradient(180deg,#f1f5f9 0%,#e8eef4 100%)"}}>
+              {cols.map((c,i)=>{
+                const isSortable = typeof c.label !== "function" && !c.noClip;
+                return (
+                <th key={i}
+                  onClick={()=>handleColHeaderClick(i)}
+                  onContextMenu={(e)=>handleColHeaderRightClick(e,i)}
+                  style={{padding:i===0?"10px 4px":"12px 12px",textAlign:i===0?"center":"left",fontSize:11,color:"#475569",
+                    borderBottom:"2px solid #e2e8f0",borderRight:"1px solid #e8eef4",whiteSpace:"nowrap",fontWeight:700,
+                    position:"relative",userSelect:"none",overflow:"visible",boxSizing:"border-box",
+                    cursor:isSortable?"pointer":"default",
+                    transition:"background 0.1s"}}>
+                  <span style={{display:"flex",alignItems:"center",gap:2,overflow:"hidden",paddingRight:i===0?0:8}}>
+                    <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{typeof c.label==="function"?c.label():c.label}</span>
+                    {isSortable && sortIndicator(i)}
+                  </span>
+                  <ResizeHandle onResize={delta=>handleResize(i,delta)} onDoubleClick={()=>autoFitCol(i)}/>
                 </th>
-              ))}
+              )})}
             </tr>
           </thead>
           <tbody>
-            {rows.length===0
+            {sortedRows.length===0
               ?<tr><td colSpan={cols.length} style={{padding:40,textAlign:"center",color:"#94a3b8"}}>{empty}</td></tr>
-              :rows.map((row,ri)=>(
-                <tr key={ri} style={{borderBottom:"1px solid #f8fafc"}} onMouseEnter={e=>e.currentTarget.style.background="#fafafa"} onMouseLeave={e=>e.currentTarget.style.background=""}>
+              :sortedRows.map((row,ri)=>{
+                const isSelected = selectedRow === ri;
+                return (
+                <tr key={ri}
+                  style={{borderBottom:"1px solid #f0f4f8", background:rowBg(ri,isSelected), cursor:onRowDoubleClick?"pointer":"default", transition:"background 0.1s"}}
+                  onClick={()=>setSelectedRow(isSelected?null:ri)}
+                  onDoubleClick={()=>onRowDoubleClick && onRowDoubleClick(row)}
+                  onMouseEnter={e=>{ if(!isSelected) e.currentTarget.style.background="#eff6ff"; }}
+                  onMouseLeave={e=>{ e.currentTarget.style.background=rowBg(ri,isSelected); }}>
                   {cols.map((c,ci)=>(
                     <td key={ci} style={{padding:ci===0?"9px 4px":"11px 12px",fontSize:13,
                       textAlign:ci===0?"center":"left",
                       overflow: c.noClip ? "visible" : "hidden",
                       textOverflow: c.noClip ? "unset" : "ellipsis",
                       whiteSpace: c.noClip ? "normal" : "nowrap",
+                      borderRight:"1px solid #f0f4f8",
                       boxSizing:"border-box"}}>
                       {c.render?c.render(row):row[c.key]}
                     </td>
                   ))}
                 </tr>
-              ))
-            }
+              );})}
           </tbody>
         </table>
         </div>
       </div>
-      {/* 커스텀 가로 스크롤바 - 테이블 바로 아래 고정 */}
+
+      {/* 우클릭 컨텍스트 메뉴 (기능6: 정렬 옵션) */}
+      {ctxMenu && (
+        <div ref={ctxRef} style={{position:"fixed",left:ctxMenu.x,top:ctxMenu.y,background:"#fff",border:"1px solid #e2e8f0",
+          borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",zIndex:9999,minWidth:160,overflow:"hidden"}}>
+          <div style={{padding:"8px 14px",fontSize:11,color:"#94a3b8",borderBottom:"1px solid #f0f0f0",fontWeight:600}}>
+            {typeof cols[ctxMenu.colIdx]?.label === "string" ? cols[ctxMenu.colIdx].label : "정렬"} 정렬
+          </div>
+          {[
+            { label:"▲ 오름차순 (A→Z)", dir:"asc" },
+            { label:"▼ 내림차순 (Z→A)", dir:"desc" },
+          ].map(opt=>(
+            <div key={opt.dir} onClick={()=>{ setSortKey(ctxMenu.colIdx); setSortDir(opt.dir); setCtxMenu(null); }}
+              style={{padding:"10px 16px",fontSize:13,cursor:"pointer",
+                background: sortKey===ctxMenu.colIdx && sortDir===opt.dir ? "#e8f5e9":"transparent",
+                color: sortKey===ctxMenu.colIdx && sortDir===opt.dir ? "#0f6e56":"#334155",
+                fontWeight: sortKey===ctxMenu.colIdx && sortDir===opt.dir ? 700:400}}
+              onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+              onMouseLeave={e=>e.currentTarget.style.background=sortKey===ctxMenu.colIdx && sortDir===opt.dir?"#e8f5e9":"transparent"}>
+              {opt.label}
+            </div>
+          ))}
+          <div onClick={()=>{ setSortKey(null); setCtxMenu(null); }}
+            style={{padding:"10px 16px",fontSize:13,cursor:"pointer",color:"#94a3b8",borderTop:"1px solid #f0f0f0"}}
+            onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            ✕ 정렬 해제
+          </div>
+          <div onClick={()=>{ autoFitCol(ctxMenu.colIdx); setCtxMenu(null); }}
+            style={{padding:"10px 16px",fontSize:13,cursor:"pointer",color:"#334155",borderTop:"1px solid #f0f0f0"}}
+            onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            ↔ 너비 자동 맞춤
+          </div>
+        </div>
+      )}
+
+      {/* 커스텀 가로 스크롤바 */}
       <div ref={trackRef} style={{position:"sticky",bottom:0,height:12,background:"#f1f5f9",borderTop:"1px solid #e2e8f0",borderRadius:"0 0 14px 14px",cursor:"pointer"}}
         onClick={e=>{
           const el=scrollRef.current; const tr=trackRef.current; const th=thumbRef.current;
