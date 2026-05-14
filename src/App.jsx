@@ -277,22 +277,21 @@ export default function App() {
     const style = document.createElement("style");
     style.textContent = `
       html, body, #root { height: 100%; margin: 0; padding: 0; overflow: hidden; box-sizing: border-box; }
-      /* ── main-content-area: 유일한 세로 스크롤 컨테이너 ── */
-      .main-content-area { scrollbar-width: thin; scrollbar-color: #94a3b8 #f1f5f9; }
-      .main-content-area::-webkit-scrollbar { width: 10px; }
-      .main-content-area::-webkit-scrollbar-track { background: #f1f5f9; border-left: 1px solid #e2e8f0; }
-      .main-content-area::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 6px; border: 2px solid #f1f5f9; }
-      .main-content-area::-webkit-scrollbar-thumb:hover { background: #64748b; }
-      /* ── 테이블 세로 스크롤바 (rt-wrap) ── */
-      .rt-wrap { scrollbar-width: thin; scrollbar-color: #cbd5e1 #f8fafc; }
-      .rt-wrap::-webkit-scrollbar { width: 8px; }
-      .rt-wrap::-webkit-scrollbar-track { background: #f8fafc; border-radius: 0 8px 8px 0; }
-      .rt-wrap::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; border: 1px solid #f8fafc; }
-      .rt-wrap::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-      /* ── 테이블 가로 스크롤바 숨김 (커스텀으로 대체) ── */
-      .rt-inner::-webkit-scrollbar { display: none; }
-      .rt-inner { scrollbar-width: none; }
-      /* ── 기타 스크롤바 기본 최소화 ── */
+
+      /* ── main-content-area: 세로 스크롤 완전 비활성화 (rt-wrap이 담당) ── */
+      .main-content-area { overflow: hidden !important; }
+
+      /* ── rt-wrap: 세로 스크롤만 허용, 가로 스크롤바는 완전 숨김 ── */
+      /* 세로 스크롤바 스타일 */
+      .rt-wrap { scrollbar-width: thin; scrollbar-color: #94a3b8 #f1f5f9; }
+      .rt-wrap::-webkit-scrollbar        { width: 10px; height: 0px; }
+      .rt-wrap::-webkit-scrollbar-track  { background: #f1f5f9; border-left: 1px solid #e2e8f0; }
+      .rt-wrap::-webkit-scrollbar-thumb  { background: #94a3b8; border-radius: 6px; border: 2px solid #f1f5f9; }
+      .rt-wrap::-webkit-scrollbar-thumb:hover { background: #64748b; }
+      /* 가로 스크롤바 완전 숨김 (커스텀으로 대체) */
+      .rt-wrap::-webkit-scrollbar:horizontal { height: 0px; display: none; }
+
+      /* ── 전역 기본값 최소화 (위 규칙 뒤에 선언하여 덮어쓰지 않음) ── */
       ::-webkit-scrollbar { width: 4px; height: 4px; }
       ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
@@ -471,14 +470,14 @@ export default function App() {
         </div>
       )}
 
-      <div className="main-content-area" style={{ flex:1, overflowY:"auto", overflowX:"hidden", minWidth:0, WebkitOverflowScrolling:"touch", position:"relative" }}>
+      <div className="main-content-area" style={{ flex:1, overflowY:"hidden", overflowX:"hidden", minWidth:0, position:"relative", display:"flex", flexDirection:"column" }}>
         {isMobile && (
           <div style={{ background:"#fff", padding:"14px 18px", borderBottom:"1px solid #e2e8f0", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, zIndex:10 }}>
             <span onClick={()=>{ setView("dashboard"); window.location.reload(); }} style={{ fontWeight:800, color:"#0f6e56", fontSize:16, cursor:"pointer", userSelect:"none" }}>IT Asset Manager</span>
             <Btn onClick={handleLogout} style={{ fontSize:11, padding:"5px 10px" }}>로그아웃</Btn>
           </div>
         )}
-        <main style={{ padding:isMobile?"16px":"32px", paddingBottom:isMobile?140:80, boxSizing:"border-box", width:"100%", minWidth:0 }}>
+        <main style={{ padding:isMobile?"16px":"32px", paddingBottom:isMobile?"16px":"32px", boxSizing:"border-box", width:"100%", minWidth:0, flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
           {/* 
             성능 최적화: 조건부 렌더링({view==="x" && ...}) 대신 display:none으로 숨김.
             메뉴 전환 시 이미 마운트된 컴포넌트는 state를 유지한 채 즉시 표시.
@@ -1150,8 +1149,8 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
   }, [visibleCols, selectedIds, isAllChecked, canEdit, pagedRows]);
 
   return (
-    <div>
-      <div style={{marginBottom:14}}>
+    <div style={{display:"flex",flexDirection:"column",height:"100%",minHeight:0}}>
+      <div style={{marginBottom:14,flexShrink:0}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:12}}>
           <h2 style={{margin:0,fontSize:20}}>하드웨어 <span style={{fontSize:13,color:"#64748b",fontWeight:500}}>전체 {data.length}건{filtered.length!==data.length?` · 필터 ${filtered.length}건`:""}{selectedIds.size>0?` · 선택 ${selectedIds.size}건`:""}</span></h2>
           <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
@@ -1220,7 +1219,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
       </div>
 
       {/* 페이지 크기 + 페이지네이션 */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8,flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"#64748b"}}>
           <span>페이지당</span>
           <select value={pageSize} onChange={e=>{const v=Number(e.target.value);setPageSize(v);setCurrentPage(1);try{localStorage.setItem(hwPageSizeKey,v);}catch{}}}
@@ -3146,21 +3145,15 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  // 뷰포트 높이 계산 — 테이블이 화면을 꽉 채우되 이중 스크롤 없도록
+  // 가상 스크롤 높이 계산 — wrapRef 실제 clientHeight 기준
   useEffect(() => {
     const el = wrapRef.current;
     if(!el) return;
-    const calc = () => {
-      const rect = el.getBoundingClientRect();
-      // 화면 하단까지 남은 공간 - 커스텀 스크롤바(16px) - 여유(8px)
-      const available = window.innerHeight - rect.top - 24;
-      setMaxBodyH(Math.max(180, available));
-    };
+    const calc = () => setMaxBodyH(el.clientHeight || 500);
     calc();
     const ro = new ResizeObserver(calc);
-    ro.observe(document.documentElement);
-    window.addEventListener("resize", calc);
-    return () => { ro.disconnect(); window.removeEventListener("resize", calc); };
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
   // 정렬
@@ -3272,14 +3265,13 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
   };
   const Colgroup = () => <colgroup>{colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}</colgroup>;
 
-  // 바디 실제 높이: wrapRef가 전체 높이 담당 → maxBodyH = 남은 공간 전체
+  // 가상 스크롤 endIdx 계산용 (실제 DOM 높이는 flex:1이 처리)
   const bodyH = maxBodyH;
 
   return (
     <div style={{background:"#fff",borderRadius:14,border:"1px solid #eee",
       display:"flex",flexDirection:"column",position:"relative",
-      // ★ 테이블 컨테이너 자체는 height를 강제하지 않음 → main-content-area가 세로 스크롤
-      minHeight:0}}>
+      flex:1, minHeight:0, overflow:"hidden"}}>
 
       {/*
         ★ 단일 스크롤 컨테이너 구조
@@ -3297,16 +3289,16 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
         커스텀 가로 스크롤바 (wrapRef.scrollLeft 기준)
       */}
 
-      {/* 단일 스크롤 래퍼 — 세로+가로 모두 담당 */}
+      {/* 단일 스크롤 래퍼 — 세로 스크롤 전담, 가로는 커스텀 */}
       <div ref={wrapRef}
         className="rt-wrap"
         onScroll={handleWrapScroll}
         style={{
-          overflowX: "auto",
+          overflowX: "auto",   /* 네이티브 가로 스크롤바는 CSS height:0으로 숨김 */
           overflowY: "auto",
-          maxHeight: bodyH,
+          flex: 1,
+          minHeight: 0,
           borderRadius: "14px 14px 0 0",
-          // 가로 스크롤바는 커스텀으로 대체 → 네이티브 숨김
         }}>
 
         {/* 헤더 — sticky로 wrapRef 안에서 세로 고정, 가로는 wrapRef가 자동 동기화 */}
