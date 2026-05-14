@@ -749,14 +749,14 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
       label: () => (
         <input type="checkbox" checked={isAllChecked}
           onChange={e=>{ const n=new Set(selectedIds); if(e.target.checked){allPageIds.forEach(id=>n.add(id));}else{allPageIds.forEach(id=>n.delete(id));} setSelectedIds(n); }}
-          style={{accentColor:"#0f6e56",width:13,height:13,cursor:"pointer"}} />
+          style={{accentColor:"#0f6e56",width:15,height:15,cursor:"pointer",display:"block",margin:"0 auto"}} />
       ),
-      minWidth:36, noClip:true,
+      minWidth:46, noClip:true,
       render: h=>(
         <input type="checkbox" checked={selectedIds.has(h.id)}
           onChange={e=>{ const n=new Set(selectedIds); e.target.checked?n.add(h.id):n.delete(h.id); setSelectedIds(n); }}
           onClick={e=>e.stopPropagation()}
-          style={{accentColor:"#0f6e56",width:13,height:13,cursor:"pointer"}} />
+          style={{accentColor:"#0f6e56",width:15,height:15,cursor:"pointer",display:"block",margin:"0 auto"}} />
       )
     },
     ...ALL_HW_COLS.filter(c=>visibleCols.has(c.key)).map(c=>({ label:c.label, render:COL_RENDERERS[c.key]||(h=>h[c.key]||"-") }))
@@ -1212,14 +1212,14 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
       label: ()=>(
         <input type="checkbox" checked={isAllSWChecked}
           onChange={e=>{const n=new Set(selectedIds);if(e.target.checked){allPageSWIds.forEach(id=>n.add(id));}else{allPageSWIds.forEach(id=>n.delete(id));}setSelectedIds(n);}}
-          style={{accentColor:"#0f6e56",width:13,height:13,cursor:"pointer"}}/>
+          style={{accentColor:"#0f6e56",width:15,height:15,cursor:"pointer",display:"block",margin:"0 auto"}}/>
       ),
-      minWidth:36, noClip:true,
+      minWidth:46, noClip:true,
       render:s=>(
         <input type="checkbox" checked={selectedIds.has(s.id)}
           onChange={e=>{const n=new Set(selectedIds);e.target.checked?n.add(s.id):n.delete(s.id);setSelectedIds(n);}}
           onClick={e=>e.stopPropagation()}
-          style={{accentColor:"#0f6e56",width:13,height:13,cursor:"pointer"}}/>
+          style={{accentColor:"#0f6e56",width:15,height:15,cursor:"pointer",display:"block",margin:"0 auto"}}/>
       )
     },
     ...ALL_SW_COLS.filter(c=>visibleCols.has(c.key)).map(c=>({label:c.label,render:SW_RENDERERS[c.key]||(s=>s[c.key]||"-")}))
@@ -2258,7 +2258,7 @@ function ResizeHandle({ onResize }) {
 function ResponsiveTable({cols,rows,empty="데이터가 없습니다."}){
   const calcW = (c) => {
     if(c.minWidth) return c.minWidth;
-    const lbl = typeof c.label==="function" ? "□" : (c.label||"");
+    const lbl = typeof c.label==="function" ? "" : (c.label||"");
     // 한국어 기준: 글자당 16px + 좌우 패딩 32px
     return Math.max(80, lbl.length * 16 + 32);
   };
@@ -2341,10 +2341,10 @@ function ResponsiveTable({cols,rows,empty="데이터가 없습니다."}){
           <thead>
             <tr style={{background:"#f8fafc"}}>
               {cols.map((c,i)=>(
-                <th key={i} style={{padding:i===0?"12px 8px 12px 12px":"12px 12px",textAlign:"left",fontSize:11,color:"#94a3b8",
+                <th key={i} style={{padding:i===0?"10px 4px":"12px 12px",textAlign:i===0?"center":"left",fontSize:11,color:"#94a3b8",
                   borderBottom:"1px solid #f0f0f0",whiteSpace:"nowrap",fontWeight:600,
-                  position:"relative",userSelect:"none",overflow:i===0?"visible":"hidden"}}>
-                  <span style={{display:"block",overflow:"hidden",textOverflow:"ellipsis",paddingRight:8}}>{typeof c.label==="function"?c.label():c.label}</span>
+                  position:"relative",userSelect:"none",overflow:"visible",boxSizing:"border-box"}}>
+                  <span style={{display:"block",overflow:"hidden",textOverflow:"ellipsis",paddingRight:i===0?0:8}}>{typeof c.label==="function"?c.label():c.label}</span>
                   <ResizeHandle onResize={delta=>handleResize(i,delta)}/>
                 </th>
               ))}
@@ -2356,10 +2356,12 @@ function ResponsiveTable({cols,rows,empty="데이터가 없습니다."}){
               :rows.map((row,ri)=>(
                 <tr key={ri} style={{borderBottom:"1px solid #f8fafc"}} onMouseEnter={e=>e.currentTarget.style.background="#fafafa"} onMouseLeave={e=>e.currentTarget.style.background=""}>
                   {cols.map((c,ci)=>(
-                    <td key={ci} style={{padding:ci===0?"11px 8px 11px 12px":"11px 12px",fontSize:13,
+                    <td key={ci} style={{padding:ci===0?"9px 4px":"11px 12px",fontSize:13,
+                      textAlign:ci===0?"center":"left",
                       overflow: c.noClip ? "visible" : "hidden",
                       textOverflow: c.noClip ? "unset" : "ellipsis",
-                      whiteSpace: c.noClip ? "normal" : "nowrap"}}>
+                      whiteSpace: c.noClip ? "normal" : "nowrap",
+                      boxSizing:"border-box"}}>
                       {c.render?c.render(row):row[c.key]}
                     </td>
                   ))}
