@@ -194,6 +194,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(() => { const s = localStorage.getItem("currentUser"); return s ? JSON.parse(s) : null; });
   const [view,    setView]    = useState("dashboard");
   const [hwClinicFilter, setHwClinicFilter] = useState("all");
+  const [swClinicFilter, setSwClinicFilter] = useState("all");
   const [isMobile,setIsMobile]= useState(typeof window!=="undefined" ? window.innerWidth<768 : false);
   const [hw,      setHw]      = useState([]);
   const [sw,      setSw]      = useState([]);
@@ -299,10 +300,13 @@ export default function App() {
   const menuItems = [
     { id: "dashboard", label: "홈",       icon: "🏠" },
     { id: "hardware",  label: "장비 (전체)", icon: "🖥️" },
-    { id: "hw_gangnam",   label: "　강남의원",   icon: "🏥", clinicKey:"gangnam"  },
-    { id: "hw_gangbuk",   label: "　강북의원",   icon: "🏥", clinicKey:"gangbuk"  },
-    { id: "hw_seoulsup",  label: "　서울숲의원", icon: "🏥", clinicKey:"seoulsup" },
-    { id: "software",  label: "소프트웨어", icon: "💿" },
+    { id: "hw_gangnam",   label: "　강남의원",   icon: "🏥", clinicKey:"gangnam",  menuType:"hw" },
+    { id: "hw_gangbuk",   label: "　강북의원",   icon: "🏥", clinicKey:"gangbuk",  menuType:"hw" },
+    { id: "hw_seoulsup",  label: "　서울숲의원", icon: "🏥", clinicKey:"seoulsup", menuType:"hw" },
+    { id: "software",  label: "소프트웨어 (전체)", icon: "💿" },
+    { id: "sw_gangnam",   label: "　강남의원",   icon: "🏥", clinicKey:"gangnam",  menuType:"sw" },
+    { id: "sw_gangbuk",   label: "　강북의원",   icon: "🏥", clinicKey:"gangbuk",  menuType:"sw" },
+    { id: "sw_seoulsup",  label: "　서울숲의원", icon: "🏥", clinicKey:"seoulsup", menuType:"sw" },
     { id: "users",     label: "사용자",   icon: "👤" },
     { id: "qrscan",    label: "QR 스캔",  icon: "📷" },
     { id: "history",   label: "로그",     icon: "📝" },
@@ -317,22 +321,29 @@ export default function App() {
           <div style={{ flex:1 }}>
             {menuItems.map(m => (
               <div key={m.id} onClick={()=>{
-                  if(m.clinicKey !== undefined){
+                  if(m.menuType==="hw"){
                     setView("hardware"); setHwClinicFilter(m.clinicKey);
+                  } else if(m.menuType==="sw"){
+                    setView("software"); setSwClinicFilter(m.clinicKey);
                   } else {
                     setView(m.id);
                     if(m.id==="hardware") setHwClinicFilter("all");
+                    if(m.id==="software") setSwClinicFilter("all");
                   }
                 }}
                 style={{ padding:"10px 14px", borderRadius:10, cursor:"pointer", display:"flex", alignItems:"center", gap:8,
-                  background: m.clinicKey!==undefined
+                  background: m.menuType==="hw"
                     ? (view==="hardware" && hwClinicFilter===m.clinicKey ? "#e8f5e9" : "transparent")
-                    : (view===m.id && (!m.clinicKey) ? "#e8f5e9" : "transparent"),
-                  color: m.clinicKey!==undefined
+                    : m.menuType==="sw"
+                    ? (view==="software" && swClinicFilter===m.clinicKey ? "#e8f5e9" : "transparent")
+                    : (view===m.id ? "#e8f5e9" : "transparent"),
+                  color: m.menuType==="hw"
                     ? (view==="hardware" && hwClinicFilter===m.clinicKey ? "#0f6e56" : "#94a3b8")
-                    : (view===m.id && hwClinicFilter==="all"||view===m.id&&!["hardware"].includes(m.id) ? "#0f6e56" : "#64748b"),
-                  fontWeight: m.clinicKey!==undefined ? 500 : 700,
-                  marginBottom:3, fontSize: m.clinicKey!==undefined ? 12 : 13 }}>
+                    : m.menuType==="sw"
+                    ? (view==="software" && swClinicFilter===m.clinicKey ? "#0f6e56" : "#94a3b8")
+                    : (view===m.id ? "#0f6e56" : "#64748b"),
+                  fontWeight: (m.menuType==="hw"||m.menuType==="sw") ? 500 : 700,
+                  marginBottom:3, fontSize: (m.menuType==="hw"||m.menuType==="sw") ? 12 : 13 }}>
                 <span>{m.icon}</span>{m.label}
               </div>
             ))}
@@ -350,13 +361,13 @@ export default function App() {
           </div>
         )}
         <main style={{ padding:isMobile?"16px":"32px", paddingBottom:isMobile?96:40 }}>
-          {view==="dashboard"  && <DashboardSection  hw={hw} sw={sw} history={history} historyCount={historyCount} isMobile={isMobile} />}
+          {view==="dashboard"  && <DashboardSection  hw={hw} sw={sw} history={history} historyCount={historyCount} trash={trash} isMobile={isMobile} />}
           {view==="hardware"   && <HardwareSection   data={hw} setHw={setHw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} setView={setView} initClinic={hwClinicFilter} />}
-          {view==="software"   && <SoftwareSection   data={sw} setSw={setSw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} />}
+          {view==="software"   && <SoftwareSection   data={sw} setSw={setSw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} initClinic={swClinicFilter} />}
           {view==="users"      && <UsersSection      users={users} setUsers={setUsers} addHistory={addHistory} isAdmin={isAdmin} currentUser={currentUser} />}
-          {view==="history"    && <HistorySection    history={history} />}
+          {view==="history"    && <HistorySection    history={history} historyCount={historyCount} currentUser={currentUser} />}
           {view==="qrscan"    && <QRScanSection     hw={hw} currentUser={currentUser} />}
-          {view==="trash"      && <TrashSection      trash={trash} setTrash={setTrash} setHw={setHw} setSw={setSw} addHistory={addHistory} canEdit={canEdit} />}
+          {view==="trash"      && <TrashSection      trash={trash} setTrash={setTrash} setHw={setHw} setSw={setSw} addHistory={addHistory} canEdit={canEdit} currentUser={currentUser} />}
         </main>
       </div>
 
@@ -377,7 +388,7 @@ export default function App() {
 // ================================================================
 // 📊 [대시보드]
 // ================================================================
-function DashboardSection({ hw, sw, history, historyCount, isMobile }) {
+function DashboardSection({ hw, sw, history, historyCount, trash, isMobile }) {
   const [clinicFilter, setClinicFilter] = useState("all");
   const filtered = clinicFilter === "all" ? hw : hw.filter(h => h.clinic === clinicFilter);
 
@@ -393,6 +404,10 @@ function DashboardSection({ hw, sw, history, historyCount, isMobile }) {
     key:k, name:v, count: hw.filter(h=>h.clinic===k).length,
   }));
 
+  const trashCount = Array.isArray(trash) ? trash.length : 0;
+  const trashHW = Array.isArray(trash) ? trash.filter(t=>(t.table_name||"assets")==="assets").length : 0;
+  const trashSW = Array.isArray(trash) ? trash.filter(t=>t.table_name==="software").length : 0;
+
   // 상태별 카드 — statusKey를 직접 사용해 badge 색상/텍스트를 STATUS_BADGE·ASSET_STATUS에서 가져옴
   const statusCards = [
     { label:"전체 장비",  statusKey:null,             value:hwStats.total,          textColor:"#0f6e56" },
@@ -402,7 +417,8 @@ function DashboardSection({ hw, sw, history, historyCount, isMobile }) {
     { label:"폐기",       statusKey:"disposed",        value:hwStats.disposed,        textColor:"#cf1322" },
     { label:"폐기대상",   statusKey:"dispose_target",  value:hwStats.dispose_target,  textColor:"#d97706" },
     { label:"소프트웨어", statusKey:null,              value:sw.length,               textColor:"#7c3aed" },
-    { label:"활동 로그",  statusKey:null,              value:historyCount||history.length, textColor:"#0891b2" },
+    { label:"활동 로그",  statusKey:null,              value:historyCount>0?historyCount:history.length, textColor:"#0891b2" },
+    { label:"휴지통",     statusKey:null,              value:trashCount,              textColor:"#94a3b8", sub:`장비 ${trashHW} · SW ${trashSW}` },
   ];
 
   return (
@@ -436,6 +452,7 @@ function DashboardSection({ hw, sw, history, historyCount, isMobile }) {
               <div>
                 <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>{c.label}</div>
                 <div style={{ fontSize:24, fontWeight:800, color:c.textColor }}>{c.value}</div>
+                {c.sub && <div style={{ fontSize:10, color:"#94a3b8", marginTop:2 }}>{c.sub}</div>}
               </div>
               {badge && (
                 <span style={{ background:badge.bg, color:badge.color, padding:"3px 10px", borderRadius:20, fontSize:11, fontWeight:700 }}>
@@ -484,9 +501,10 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
   const [filterClinic, setFilterClinic] = useState(initClinic||"all");
   const [showColMenu,  setShowColMenu]  = useState(false);
   const [selectedIds,  setSelectedIds]  = useState(new Set());
-  const [pageSize,     setPageSize]     = useState(20);
-  const [currentPage,  setCurrentPage]  = useState(1);
   const hwColPrefKey = `hw_cols_${currentUser?.loginid||"default"}`;
+  const hwPageSizeKey = `hw_pagesize_${currentUser?.loginid||"default"}`;
+  const [pageSize,     setPageSize]     = useState(()=>{ try{const s=localStorage.getItem(hwPageSizeKey);return s?Number(s):20;}catch{return 20;} });
+  const [currentPage,  setCurrentPage]  = useState(1);
   const [visibleCols,  setVisibleCols]  = useState(()=>loadColPref(hwColPrefKey, DEFAULT_HW_COLS));
   const fileInputRef = useRef(null);
   const colMenuRef   = useRef(null);
@@ -898,7 +916,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
         <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"#64748b"}}>
           <span>페이지당</span>
-          <select value={pageSize} onChange={e=>{setPageSize(Number(e.target.value));setCurrentPage(1);}}
+          <select value={pageSize} onChange={e=>{const v=Number(e.target.value);setPageSize(v);setCurrentPage(1);try{localStorage.setItem(hwPageSizeKey,v);}catch{}}}
             style={{padding:"5px 8px",borderRadius:8,border:"1px solid #ddd",fontSize:13,background:"#fff"}}>
             {[10,20,50,100,500,1000,0].map(n=><option key={n} value={n}>{n===0?"전체보기":n+"개"}</option>)}
           </select>
@@ -1073,23 +1091,27 @@ const saveColPref = (key, set) => {
   try { localStorage.setItem(key, JSON.stringify([...set])); } catch {}
 };
 
-function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, currentUser }) {
+function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, currentUser, initClinic }) {
   const colPrefKey = `sw_cols_${currentUser?.loginid||"default"}`;
+  const swPageSizeKey = `sw_pagesize_${currentUser?.loginid||"default"}`;
   const [modal,        setModal]       = useState(null);
   const [form,         setForm]        = useState({});
   const [loading,      setLoading]     = useState(false);
   const [importLoading,setImportLoading]=useState(false);
   const [search,       setSearch]      = useState("");
-  const [filterClinic, setFilterClinic]= useState("all");
+  const [filterClinic, setFilterClinic]= useState(initClinic||"all");
   const [filterStatus, setFilterStatus]= useState("");
   const [filterCat,    setFilterCat]   = useState("");
   const [showColMenu,  setShowColMenu] = useState(false);
   const [visibleCols,  setVisibleCols] = useState(()=>loadColPref(colPrefKey, DEFAULT_SW_COLS));
   const [selectedIds,  setSelectedIds] = useState(new Set());
-  const [pageSize,     setPageSize]    = useState(20);
+  const [pageSize,     setPageSize]    = useState(()=>{ try{const s=localStorage.getItem(swPageSizeKey);return s?Number(s):20;}catch{return 20;} });
   const [currentPage,  setCurrentPage] = useState(1);
   const fileInputRef = useRef(null);
   const colMenuRef   = useRef(null);
+
+  // 사이드바 지점 메뉴 클릭 시 필터 동기화
+  useEffect(() => { setFilterClinic(initClinic||"all"); setCurrentPage(1); }, [initClinic]);
 
   useEffect(()=>{
     const h=(e)=>{if(colMenuRef.current&&!colMenuRef.current.contains(e.target))setShowColMenu(false);};
@@ -1279,8 +1301,9 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
     },
     ...ALL_SW_COLS.filter(c=>visibleCols.has(c.key)).map(c=>({label:c.label,render:SW_RENDERERS[c.key]||(s=>s[c.key]||"-")}))
   ];
-  if(canEdit) activeSWCols.push({label:"관리", minWidth:140, noClip:true, render:s=>(
+  if(canEdit) activeSWCols.push({label:"관리", minWidth:170, noClip:true, render:s=>(
     <div style={{display:"flex",gap:4,flexWrap:"nowrap"}}>
+      <Btn onClick={()=>{setForm({...s});setModal("detail");}} style={{fontSize:11,padding:"5px 7px"}}>상세</Btn>
       <Btn onClick={()=>{setForm({...s});setModal("edit");}} style={{fontSize:11,padding:"5px 7px"}}>수정</Btn>
       <Btn onClick={()=>deleteItem(s)} variant="danger" style={{fontSize:11,padding:"5px 7px"}}>삭제</Btn>
     </div>
@@ -1348,9 +1371,9 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
         <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"#64748b"}}>
           <span>페이지당</span>
-          <select value={pageSize} onChange={e=>{setPageSize(Number(e.target.value));setCurrentPage(1);}}
+          <select value={pageSize} onChange={e=>{const v=Number(e.target.value);setPageSize(v);setCurrentPage(1);try{localStorage.setItem(swPageSizeKey,v);}catch{}}}
             style={{padding:"5px 8px",borderRadius:8,border:"1px solid #ddd",fontSize:13,background:"#fff"}}>
-            {[10,20,50,100,500,1000,0].map(n=><option key={n} value={n}>{n===0?"전체보기":n+"개"}</option>)}
+            {[20,50,100,500,1000,0].map(n=><option key={n} value={n}>{n===0?"전체보기":n+"개"}</option>)}
           </select>
           <span style={{fontSize:12}}>({pageSize===0?"전체":filtered.length===0?"0":((currentPage-1)*pageSize+1)+"–"+Math.min(currentPage*pageSize,filtered.length)} / {filtered.length}건)</span>
         </div>
@@ -1369,7 +1392,12 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
         )}
       </div>
       <ResponsiveTable cols={activeSWCols} rows={pagedRows} empty="등록된 소프트웨어가 없습니다."
-        onRowDoubleClick={canEdit ? (row)=>{setForm({...row});setModal("edit");} : undefined}/>
+        onRowDoubleClick={(row)=>{setForm({...row});setModal("detail");}}/>
+      {modal==="detail"&&(
+        <Modal title="소프트웨어 상세정보" onClose={()=>setModal(null)}>
+          <SWDetailView item={form} onEdit={canEdit?()=>setModal("edit"):null}/>
+        </Modal>
+      )}
       {(modal==="add"||modal==="edit")&&(
         <Modal title={modal==="add"?"소프트웨어 등록":"소프트웨어 수정"} onClose={()=>setModal(null)}>
           <SWForm form={form} setForm={setForm} onSave={save} loading={loading}/>
@@ -1378,6 +1406,45 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
     </div>
   );
 }
+function SWDetailView({ item, onEdit }) {
+  const inp={padding:"8px 10px",borderRadius:8,border:"1px solid #e2e8f0",fontSize:13,background:"#f8fafc"};
+  const SW_SECTIONS = [
+    { title:"📌 기본 정보",   keys:["name","category","version","vendor","status","clinic"] },
+    { title:"📋 라이선스",    keys:["licensetype","licensekey","quantity","cost"] },
+    { title:"📅 일정",        keys:["purchasedate","expirydate","assignedto"] },
+    { title:"📎 비고",        keys:["notes"] },
+  ];
+  const formatVal = (key, val) => {
+    if(!val && val!==0) return "-";
+    if(key==="category") return SW_CATEGORIES[val]||val;
+    if(key==="status") return SW_STATUS[val]||val;
+    if(key==="clinic") return CLINICS[val]||val;
+    return String(val);
+  };
+  return (
+    <div style={{maxHeight:"65vh",overflowY:"auto",paddingRight:4}}>
+      {SW_SECTIONS.map(sec=>(
+        <div key={sec.title} style={{marginBottom:16}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#64748b",marginBottom:8,paddingBottom:4,borderBottom:"1px solid #e2e8f0"}}>{sec.title}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            {sec.keys.map(k=>{
+              const f=SW_FIELD_MAP[k]; if(!f) return null;
+              const isWide = k==="notes"||k==="licensekey";
+              return (
+                <div key={k} style={{gridColumn:isWide?"1 / -1":"auto"}}>
+                  <div style={{fontSize:11,color:"#94a3b8",marginBottom:3}}>{f.label}</div>
+                  <div style={{...inp,wordBreak:"break-all"}}>{formatVal(k,item[k])}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      {onEdit && <Btn onClick={onEdit} variant="primary" style={{width:"100%",padding:12,marginTop:4}}>✏️ 수정하기</Btn>}
+    </div>
+  );
+}
+
 function SWForm({ form, setForm, onSave, loading }) {
   const inp={padding:"8px 10px",borderRadius:8,border:"1px solid #ddd",fontSize:13,width:"100%",boxSizing:"border-box"};
   return (
@@ -1416,9 +1483,15 @@ function SWForm({ form, setForm, onSave, loading }) {
 // 👤 [사용자 관리]
 // ================================================================
 function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
+  const usersPageSizeKey = `users_pagesize_${currentUser?.loginid||"default"}`;
   const [modal,   setModal]  = useState(null);
   const [form,    setForm]   = useState({});
   const [loading, setLoading]= useState(false);
+  const [pageSize,   setPageSize]   = useState(()=>{ try{const s=localStorage.getItem(usersPageSizeKey);return s?Number(s):20;}catch{return 20;} });
+  const [currentPage,setCurrentPage]= useState(1);
+
+  const totalPages = pageSize===0?1:Math.ceil(users.length/pageSize);
+  const pagedUsers = pageSize===0?users:users.slice((currentPage-1)*pageSize,currentPage*pageSize);
 
   // 읽기전용 또는 일반사용자는 관리 불가
   if(!isAdmin) return (
@@ -1431,6 +1504,13 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
           <div style={{fontSize:13,color:"#64748b"}}>사용자 계정 등록·수정·삭제는 <b>관리자</b>만 가능합니다.</div>
         </div>
       </div>
+      <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"#64748b",marginBottom:8}}>
+        <span>페이지당</span>
+        <select value={pageSize} onChange={e=>{const v=Number(e.target.value);setPageSize(v);setCurrentPage(1);try{localStorage.setItem(usersPageSizeKey,v);}catch{}}}
+          style={{padding:"5px 8px",borderRadius:8,border:"1px solid #ddd",fontSize:13,background:"#fff"}}>
+          {[20,50,100,500,1000,0].map(n=><option key={n} value={n}>{n===0?"전체보기":n+"개"}</option>)}
+        </select>
+      </div>
       <ResponsiveTable
         cols={[
           { label:"아이디",  key:"loginid", minWidth:130 },
@@ -1439,7 +1519,7 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
           { label:"지점",    minWidth:140,  render:u=>CLINICS[u.clinic]||u.clinic||"-" },
           { label:"권한",    minWidth:120,  render:u=>{ const r={admin:{bg:"#e8f5e9",c:"#0f6e56"},user:{bg:"#eff6ff",c:"#2563eb"},readonly:{bg:"#f1f5f9",c:"#64748b"}}[u.role]||{bg:"#f1f5f9",c:"#64748b"}; return <span style={{background:r.bg,color:r.c,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700}}>{ROLES[u.role]||u.role}</span>; }},
         ]}
-        rows={users} empty="사용자가 없습니다."
+        rows={pagedUsers} empty="사용자가 없습니다."
       />
     </div>
   );
@@ -1467,12 +1547,36 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
   };
 
   const inp={padding:"9px 12px",borderRadius:9,border:"1px solid #ddd",fontSize:13,width:"100%",boxSizing:"border-box"};
+
+  const pageSizeUI = (
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"#64748b"}}>
+        <span>페이지당</span>
+        <select value={pageSize} onChange={e=>{const v=Number(e.target.value);setPageSize(v);setCurrentPage(1);try{localStorage.setItem(usersPageSizeKey,v);}catch{}}}
+          style={{padding:"5px 8px",borderRadius:8,border:"1px solid #ddd",fontSize:13,background:"#fff"}}>
+          {[20,50,100,500,1000,0].map(n=><option key={n} value={n}>{n===0?"전체보기":n+"개"}</option>)}
+        </select>
+        <span style={{fontSize:12}}>({pageSize===0?"전체":users.length===0?"0":((currentPage-1)*pageSize+1)+"–"+Math.min(currentPage*pageSize,users.length)} / {users.length}건)</span>
+      </div>
+      {totalPages>1 && (
+        <div style={{display:"flex",gap:4,alignItems:"center"}}>
+          <Btn onClick={()=>setCurrentPage(1)}          disabled={currentPage===1}          style={{padding:"5px 10px",fontSize:12}}>«</Btn>
+          <Btn onClick={()=>setCurrentPage(p=>p-1)}     disabled={currentPage===1}          style={{padding:"5px 10px",fontSize:12}}>‹</Btn>
+          {Array.from({length:Math.min(5,totalPages)},(_,i)=>{let p=currentPage<=3?i+1:currentPage+i-2;if(p>totalPages)return null;return <Btn key={p} onClick={()=>setCurrentPage(p)} style={{padding:"5px 10px",fontSize:12,background:p===currentPage?"#0f6e56":"#fff",color:p===currentPage?"#fff":"#333",border:"1px solid #ddd"}}>{p}</Btn>;})}
+          <Btn onClick={()=>setCurrentPage(p=>p+1)}     disabled={currentPage===totalPages} style={{padding:"5px 10px",fontSize:12}}>›</Btn>
+          <Btn onClick={()=>setCurrentPage(totalPages)} disabled={currentPage===totalPages} style={{padding:"5px 10px",fontSize:12}}>»</Btn>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
         <h2 style={{margin:0,fontSize:20}}>사용자 계정 ({users.length}명)</h2>
         {isAdmin && <Btn onClick={()=>{setForm({role:"user"});setModal("add");}} variant="primary">+ 계정 등록</Btn>}
       </div>
+      {pageSizeUI}
       <ResponsiveTable
         cols={[
           { label:"아이디",   key:"loginid", minWidth:130 },
@@ -1487,7 +1591,7 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
             </div>
           )},
         ]}
-        rows={users} empty="사용자가 없습니다."
+        rows={pagedUsers} empty="사용자가 없습니다."
       />
       {(modal==="add"||modal==="edit") && (
         <Modal title={modal==="add"?"계정 등록":"계정 수정"} onClose={()=>setModal(null)}>
@@ -1541,12 +1645,15 @@ const CATEGORY_BADGE = {
   trash:    { bg:"#fff1f0", color:"#cf1322" },
 };
 
-function HistorySection({ history }) {
+function HistorySection({ history, historyCount, currentUser }) {
+  const histPageSizeKey = `hist_pagesize_${currentUser?.loginid||"default"}`;
   const [query,      setQuery]      = useState("");
   const [field,      setField]      = useState("all");
   const [filterCat,  setFilterCat]  = useState("all");
   const [filterAction,setFilterAction] = useState("");
   const [showDetail, setShowDetail] = useState(null);
+  const [pageSize,   setPageSize]   = useState(()=>{ try{const s=localStorage.getItem(histPageSizeKey);return s?Number(s):20;}catch{return 20;} });
+  const [currentPage,setCurrentPage]= useState(1);
 
   const actions = [...new Set(history.map(h=>h.action).filter(Boolean))].sort();
 
@@ -1560,16 +1667,22 @@ function HistorySection({ history }) {
     return matchQ && matchCat && matchAct;
   });
 
+  const totalPages = pageSize===0?1:Math.ceil(filtered.length/pageSize);
+  const pagedRows  = pageSize===0?filtered:filtered.slice((currentPage-1)*pageSize,currentPage*pageSize);
+  useEffect(()=>setCurrentPage(1),[query,filterCat,filterAction,pageSize]);
+
   // 카테고리별 카운트
   const catCounts = {};
   history.forEach(h=>{ const k=h.atype||"etc"; catCounts[k]=(catCounts[k]||0)+1; });
+
+  const totalCount = historyCount > 0 ? historyCount : history.length;
 
   return (
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <h2 style={{margin:0}}>활동 로그</h2>
         <span style={{fontSize:13,color:"#64748b"}}>
-          전체 <b style={{color:"#0f6e56"}}>{history.length}</b>건
+          전체 <b style={{color:"#0f6e56"}}>{totalCount}</b>건
           {(query||filterCat!=="all"||filterAction) && ` · 검색 ${filtered.length}건`}
         </span>
       </div>
@@ -1617,10 +1730,35 @@ function HistorySection({ history }) {
           <Btn onClick={()=>{setQuery("");setFilterCat("all");setFilterAction("");}}>초기화</Btn>}
       </div>
 
+      {/* 페이지당 개수 + 페이지네이션 */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"#64748b"}}>
+          <span>페이지당</span>
+          <select value={pageSize} onChange={e=>{const v=Number(e.target.value);setPageSize(v);setCurrentPage(1);try{localStorage.setItem(histPageSizeKey,v);}catch{}}}
+            style={{padding:"5px 8px",borderRadius:8,border:"1px solid #ddd",fontSize:13,background:"#fff"}}>
+            {[20,50,100,500,1000,0].map(n=><option key={n} value={n}>{n===0?"전체보기":n+"개"}</option>)}
+          </select>
+          <span style={{fontSize:12}}>({pageSize===0?"전체":filtered.length===0?"0":((currentPage-1)*pageSize+1)+"–"+Math.min(currentPage*pageSize,filtered.length)} / {filtered.length}건)</span>
+        </div>
+        {totalPages>1 && (
+          <div style={{display:"flex",gap:4,alignItems:"center"}}>
+            <Btn onClick={()=>setCurrentPage(1)}          disabled={currentPage===1}          style={{padding:"5px 10px",fontSize:12}}>«</Btn>
+            <Btn onClick={()=>setCurrentPage(p=>p-1)}     disabled={currentPage===1}          style={{padding:"5px 10px",fontSize:12}}>‹</Btn>
+            {Array.from({length:Math.min(5,totalPages)},(_,i)=>{
+              let p=currentPage<=3?i+1:currentPage+i-2; if(p>totalPages)return null;
+              return <Btn key={p} onClick={()=>setCurrentPage(p)}
+                style={{padding:"5px 10px",fontSize:12,background:p===currentPage?"#0f6e56":"#fff",color:p===currentPage?"#fff":"#333",border:"1px solid #ddd"}}>{p}</Btn>;
+            })}
+            <Btn onClick={()=>setCurrentPage(p=>p+1)}     disabled={currentPage===totalPages} style={{padding:"5px 10px",fontSize:12}}>›</Btn>
+            <Btn onClick={()=>setCurrentPage(totalPages)} disabled={currentPage===totalPages} style={{padding:"5px 10px",fontSize:12}}>»</Btn>
+          </div>
+        )}
+      </div>
+
       <ResponsiveTable
         cols={[
           { label:"시간",    minWidth:155, render:h=><span style={{fontSize:11,whiteSpace:"nowrap",color:"#64748b"}}>{fDT(h.ts)}</span> },
-          { label:"수행자",  minWidth:100, key:"userName" },
+          { label:"수행자",  minWidth:100, key:"username" },
           { label:"카테고리",minWidth:130, render:h=>{
             const b=CATEGORY_BADGE[h.atype]||{bg:"#f1f5f9",color:"#64748b"};
             return <span style={{background:b.bg,color:b.color,padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
@@ -1628,14 +1766,14 @@ function HistorySection({ history }) {
             </span>;
           }},
           { label:"액션",    minWidth:170, render:h=><span style={{background:"#f1f5f9",padding:"2px 8px",borderRadius:10,fontSize:12}}>{h.action}</span> },
-          { label:"대상",    minWidth:130, key:"aName" },
+          { label:"대상",    minWidth:130, key:"aname" },
           { label:"상세",    minWidth:240, key:"detail" },
           { label:"지점",    minWidth:120, render:h=>CLINICS[h.clinic]||h.clinic||"-" },
           { label:"변경내용",minWidth:90,  noClip:true, render:h=>(h.before||h.after)&&(
             <Btn onClick={()=>setShowDetail(h)} style={{fontSize:11,padding:"4px 8px"}}>보기</Btn>
           )},
         ]}
-        rows={filtered} empty={query||filterCat!=="all"?"검색 결과 없음":"로그가 없습니다."}
+        rows={pagedRows} empty={query||filterCat!=="all"?"검색 결과 없음":"로그가 없습니다."}
       />
       {showDetail && (
         <Modal title="변경 내용 상세" onClose={()=>setShowDetail(null)}>
@@ -2003,31 +2141,26 @@ function QRScanSection({ hw, onClose, currentUser }) {
 // ================================================================
 // 🗑️ [휴지통]
 // ================================================================
-function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit }) {
+function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, currentUser }) {
+  const trashPageSizeKey = `trash_pagesize_${currentUser?.loginid||"default"}`;
   const [search,     setSearch]     = useState("");
-  const [filterType, setFilterType] = useState("all"); // "all" | "assets" | "software"
+  const [filterType, setFilterType] = useState("all");
   const [loading,    setLoading]    = useState(false);
+  const [detailItem, setDetailItem] = useState(null);
+  const [pageSize,   setPageSize]   = useState(()=>{ try{const s=localStorage.getItem(trashPageSizeKey);return s?Number(s):20;}catch{return 20;} });
+  const [currentPage,setCurrentPage]= useState(1);
 
-  // 탭 진입 시 또는 수동 새로고침 시 휴지통 DB를 직접 재조회
   const refreshTrash = useCallback(async () => {
     setLoading(true);
     try {
       const d = await api.getTrash();
-      console.log("[TrashSection] refreshTrash rows:", Array.isArray(d) ? d.length : d);
       setTrash(Array.isArray(d) ? d : []);
-    } catch(e) {
-      console.error("[TrashSection] refreshTrash error:", e);
-    } finally {
-      setLoading(false);
-    }
+    } catch(e) { console.error("[TrashSection] refreshTrash error:", e); }
+    finally { setLoading(false); }
   }, [setTrash]);
 
-  // 컴포넌트 마운트(탭 진입) 시 항상 최신 데이터 조회
-  useEffect(() => {
-    refreshTrash();
-  }, [refreshTrash]);
+  useEffect(() => { refreshTrash(); }, [refreshTrash]);
 
-  // DB 자동생성 컬럼 제거 — 복구 시 이 컬럼들을 포함하면 INSERT 오류 발생
   const DB_AUTO_COLS = ["id","created_at","updated_at","deleted_at"];
 
   const getData = t => {
@@ -2048,10 +2181,13 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit }) {
     return matchType && matchSearch;
   });
 
+  const totalPages = pageSize===0?1:Math.ceil(filtered.length/pageSize);
+  const pagedRows  = pageSize===0?filtered:filtered.slice((currentPage-1)*pageSize,currentPage*pageSize);
+  useEffect(()=>setCurrentPage(1),[search,filterType,pageSize]);
+
   const restore = (trashItem) => {
     const orig  = getData(trashItem);
     const table = getTable(trashItem);
-    // DB 자동생성 컬럼 전부 제거
     const rest  = Object.fromEntries(Object.entries(orig).filter(([k]) => !DB_AUTO_COLS.includes(k)));
     const name  = rest.gccode || rest.modelname || rest.name || "항목";
     const typeLabel = table === "assets" ? "장비" : "소프트웨어";
@@ -2059,9 +2195,7 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit }) {
     if (!window.confirm(`"${name}"을(를) 복구하시겠습니까?`)) return;
     api.deleteTrash(trashItem.id)
       .then(() => fetch(`${BASE_URL}/${table}`, {
-        method:"POST",
-        headers:{...H,"Prefer":"return=representation"},
-        body: JSON.stringify(rest)
+        method:"POST", headers:{...H,"Prefer":"return=representation"}, body: JSON.stringify(rest)
       }).then(safeJson))
       .then(restored => {
         setTrash(prev => prev.filter(t => t.id !== trashItem.id));
@@ -2081,9 +2215,7 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit }) {
     const aType = table === "assets" ? "hardware" : "software";
     api.deleteTrash(trashItem.id).then(() => {
       setTrash(prev => prev.filter(t => t.id !== trashItem.id));
-      addHistory("영구 삭제", aType, trashItem.id, name,
-        "휴지통에서 영구 삭제", JSON.stringify(orig), "");
-      // 영구삭제 후 DB 재조회로 정합성 확인
+      addHistory("영구 삭제", aType, trashItem.id, name, "휴지통에서 영구 삭제", JSON.stringify(orig), "");
       refreshTrash();
     }).catch(err => alert("영구삭제 오류: " + err.message));
   };
@@ -2093,18 +2225,15 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit }) {
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
         <h2 style={{margin:0}}>휴지통 <span style={{fontSize:13,color:"#64748b",fontWeight:500}}>전체 {trash.length}건{filtered.length!==trash.length?` · 필터 ${filtered.length}건`:""}</span></h2>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-          {/* 새로고침 버튼 */}
           <Btn onClick={refreshTrash} disabled={loading} style={{fontSize:12,padding:"7px 12px"}}>
             {loading ? "조회 중..." : "🔄 새로고침"}
           </Btn>
-          {/* 구분 필터 */}
           <select value={filterType} onChange={e=>setFilterType(e.target.value)}
             style={{padding:"8px 10px",borderRadius:10,border:"1px solid #ddd",fontSize:13,background:"#fff"}}>
             <option value="all">전체</option>
             <option value="assets">장비</option>
             <option value="software">소프트웨어</option>
           </select>
-          {/* 검색 */}
           <div style={{position:"relative"}}>
             <span style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",color:"#94a3b8",fontSize:13}}>🔍</span>
             <input placeholder="GC코드, 모델명, 사용자 검색..." value={search} onChange={e=>setSearch(e.target.value)}
@@ -2114,6 +2243,32 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit }) {
           </div>
         </div>
       </div>
+
+      {/* 페이지당 개수 + 페이지네이션 */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"#64748b"}}>
+          <span>페이지당</span>
+          <select value={pageSize} onChange={e=>{const v=Number(e.target.value);setPageSize(v);setCurrentPage(1);try{localStorage.setItem(trashPageSizeKey,v);}catch{}}}
+            style={{padding:"5px 8px",borderRadius:8,border:"1px solid #ddd",fontSize:13,background:"#fff"}}>
+            {[20,50,100,500,1000,0].map(n=><option key={n} value={n}>{n===0?"전체보기":n+"개"}</option>)}
+          </select>
+          <span style={{fontSize:12}}>({pageSize===0?"전체":filtered.length===0?"0":((currentPage-1)*pageSize+1)+"–"+Math.min(currentPage*pageSize,filtered.length)} / {filtered.length}건)</span>
+        </div>
+        {totalPages>1 && (
+          <div style={{display:"flex",gap:4,alignItems:"center"}}>
+            <Btn onClick={()=>setCurrentPage(1)}          disabled={currentPage===1}          style={{padding:"5px 10px",fontSize:12}}>«</Btn>
+            <Btn onClick={()=>setCurrentPage(p=>p-1)}     disabled={currentPage===1}          style={{padding:"5px 10px",fontSize:12}}>‹</Btn>
+            {Array.from({length:Math.min(5,totalPages)},(_,i)=>{
+              let p=currentPage<=3?i+1:currentPage+i-2; if(p>totalPages)return null;
+              return <Btn key={p} onClick={()=>setCurrentPage(p)}
+                style={{padding:"5px 10px",fontSize:12,background:p===currentPage?"#0f6e56":"#fff",color:p===currentPage?"#fff":"#333",border:"1px solid #ddd"}}>{p}</Btn>;
+            })}
+            <Btn onClick={()=>setCurrentPage(p=>p+1)}     disabled={currentPage===totalPages} style={{padding:"5px 10px",fontSize:12}}>›</Btn>
+            <Btn onClick={()=>setCurrentPage(totalPages)} disabled={currentPage===totalPages} style={{padding:"5px 10px",fontSize:12}}>»</Btn>
+          </div>
+        )}
+      </div>
+
       <ResponsiveTable
         cols={[
           { label:"구분",   minWidth:110, render:t=>{ const tb=getTable(t); return <span style={{background:tb==="assets"?"#eff6ff":"#f0fdf4",color:tb==="assets"?"#2563eb":"#0f6e56",padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700}}>{tb==="assets"?"🖥️ 장비":"💿 소프트웨어"}</span>; }},
@@ -2124,19 +2279,86 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit }) {
           { label:"지점",     minWidth:120, render:t=>{ const d=getData(t); return CLINICS[d.clinic]||d.clinic||"-"; }},
           { label:"상태",     minWidth:110, render:t=>{ const d=getData(t); const sk=d.assetstatus||d.status; const b=STATUS_BADGE[sk]||{bg:"#f1f5f9",color:"#64748b"}; return sk?<span style={{background:b.bg,color:b.color,padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700}}>{ASSET_STATUS[sk]||SW_STATUS[sk]||sk}</span>:"-"; }},
           { label:"삭제일",   minWidth:155, render:t=>fDT(t.deletedat||t.deletedAt||t.created_at) },
-          { label:"관리",     minWidth:180, noClip:true, render:t=>canEdit&&(
+          { label:"관리",     minWidth:210, noClip:true, render:t=>(
             <div style={{display:"flex",gap:5,flexWrap:"nowrap"}}>
-              <Btn onClick={()=>restore(t)} variant="warning" style={{fontSize:11,padding:"5px 8px"}}>🔄 복구</Btn>
-              <Btn onClick={()=>deleteForever(t)} variant="danger" style={{fontSize:11,padding:"5px 8px"}}>🗑️ 영구삭제</Btn>
+              <Btn onClick={()=>setDetailItem(t)} style={{fontSize:11,padding:"5px 8px"}}>🔍 상세</Btn>
+              {canEdit && <Btn onClick={()=>restore(t)} variant="warning" style={{fontSize:11,padding:"5px 8px"}}>🔄 복구</Btn>}
+              {canEdit && <Btn onClick={()=>deleteForever(t)} variant="danger" style={{fontSize:11,padding:"5px 8px"}}>🗑️ 영구삭제</Btn>}
             </div>
           )},
         ]}
-        rows={filtered} empty={search||filterType!=="all"?"검색 결과가 없습니다.":"휴지통이 비어있습니다."}
+        rows={pagedRows} empty={search||filterType!=="all"?"검색 결과가 없습니다.":"휴지통이 비어있습니다."}
+        onRowDoubleClick={(t)=>setDetailItem(t)}
       />
+      {detailItem && (
+        <Modal title="휴지통 상세정보" onClose={()=>setDetailItem(null)}>
+          <TrashDetailView trashItem={detailItem} getData={getData} getTable={getTable}
+            onRestore={canEdit?()=>{restore(detailItem);setDetailItem(null);}:null}
+            onDelete={canEdit?()=>{deleteForever(detailItem);setDetailItem(null);}:null}/>
+        </Modal>
+      )}
     </div>
   );
 }
 
+
+// ================================================================
+// 🗑️ [휴지통 상세보기]
+// ================================================================
+function TrashDetailView({ trashItem, getData, getTable, onRestore, onDelete }) {
+  const d = getData(trashItem);
+  const table = getTable(trashItem);
+  const isHW = table === "assets";
+
+  const sections = isHW ? HW_SECTIONS : [
+    { title:"📌 기본 정보",   keys:["name","category","version","vendor","status","clinic"] },
+    { title:"📋 라이선스",    keys:["licensetype","licensekey","quantity","cost"] },
+    { title:"📅 일정",        keys:["purchasedate","expirydate","assignedto"] },
+    { title:"📎 비고",        keys:["notes"] },
+  ];
+
+  const fieldMap = isHW ? HW_FIELD_MAP : SW_FIELD_MAP;
+
+  const formatVal = (key, val) => {
+    if(val===null||val===undefined||val==="") return "-";
+    if(key==="assetstatus") return ASSET_STATUS[val]||val;
+    if(key==="assettype")   return ASSET_TYPES[val]||val;
+    if(key==="clinic")      return CLINICS[val]||val;
+    if(key==="status")      return SW_STATUS[val]||val;
+    if(key==="category")    return SW_CATEGORIES[val]||val;
+    return String(val);
+  };
+
+  return (
+    <div style={{maxHeight:"70vh",overflowY:"auto",paddingRight:4}}>
+      <div style={{background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:10,padding:"8px 14px",marginBottom:14,fontSize:12,color:"#c2410c",fontWeight:600}}>
+        🗑️ 휴지통 항목 · 삭제일: {fDT(trashItem.deletedat||trashItem.deletedAt||trashItem.created_at)}
+      </div>
+      {sections.map(sec=>(
+        <div key={sec.title} style={{marginBottom:16}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#64748b",marginBottom:8,paddingBottom:4,borderBottom:"1px solid #e2e8f0"}}>{sec.title}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            {sec.keys.map(k=>{
+              const f=fieldMap[k]; if(!f) return null;
+              const isWide = f.type==="textarea" || k==="notes" || k==="licensekey" || k==="purchaseinfo";
+              const val = formatVal(k, d[k]);
+              return (
+                <div key={k} style={{gridColumn:isWide?"1 / -1":"auto"}}>
+                  <div style={{fontSize:11,color:"#94a3b8",marginBottom:3}}>{f.label}</div>
+                  <div style={{padding:"8px 10px",borderRadius:8,border:"1px solid #e2e8f0",fontSize:13,background:"#f8fafc",wordBreak:"break-all"}}>{val}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      <div style={{display:"flex",gap:8,marginTop:8}}>
+        {onRestore && <Btn onClick={onRestore} variant="warning" style={{flex:1,padding:12}}>🔄 복구하기</Btn>}
+        {onDelete  && <Btn onClick={onDelete}  variant="danger"  style={{flex:1,padding:12}}>🗑️ 영구삭제</Btn>}
+      </div>
+    </div>
+  );
+}
 
 // ================================================================
 // 📋 [변경내용 뷰] JSON 코드값 → 사람이 읽기 좋은 형태로 변환
