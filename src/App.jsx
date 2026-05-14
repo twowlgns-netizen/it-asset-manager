@@ -146,7 +146,7 @@ const api = {
   },
   addHistory: (d) => fetch(`${BASE_URL}/history`, { method:"POST", headers:H, body:JSON.stringify(d) }).then(safeJson),
   // 휴지통
-  getTrash:    () => fetch(`${BASE_URL}/trash?select=*&order=created_at.desc`, { headers:H }).then(safeJson),
+  getTrash:    () => fetch(`${BASE_URL}/trash?select=*&order=created_at.desc&limit=100000`, { headers:{...H,"Range-Unit":"items","Range":"0-99999"} }).then(safeJson),
   addTrash: async (d) => {
     // item_data는 jsonb 컬럼 → 반드시 JS 객체로 전송
     const itemObj = typeof d.item_data === "string"
@@ -252,24 +252,30 @@ export default function App() {
     localStorage.removeItem("currentUser");
   };
 
+  // ── 전체 데이터 재조회 함수 (useCallback 의존성 없이 순수 함수로)
   const fetchAll = useCallback(() => {
-    // 로그인 상태일 때만 데이터 조회
-    if (!isLoggedIn) return;
     api.getHW().then(d=>setHw(Array.isArray(d)?d:[])).catch(console.error);
     api.getSW().then(d=>setSw(Array.isArray(d)?d:[])).catch(console.error);
     api.getUsers().then(d=>setUsers(Array.isArray(d)?d:[])).catch(console.error);
     api.getHistory().then(d=>{ const l=Array.isArray(d)?d:[]; setHistory(l.sort((a,b)=>new Date(b.ts)-new Date(a.ts))); }).catch(console.error);
     api.getHistoryCount().then(n=>setHistoryCount(n)).catch(console.error);
-    api.getTrash().then(d=>setTrash(Array.isArray(d)?d:[])).catch(console.error);
-  }, [isLoggedIn]);  // isLoggedIn 변경(로그인/로그아웃/앱 업데이트) 시 반드시 재조회
+    api.getTrash().then(d=>{ console.log("[fetchAll] trash rows:", Array.isArray(d)?d.length:d); setTrash(Array.isArray(d)?d:[]); }).catch(console.error);
+  }, []); // setter 함수는 참조가 변하지 않으므로 의존성 불필요
 
+  // ── resize 리스너: 마운트/언마운트 시 1번만 등록 (fetchAll과 분리)
   useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth<768);
+    const onResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener("resize", onResize);
-    // isLoggedIn이 바뀔 때마다 (최초 마운트 포함) 전체 데이터 재조회
-    fetchAll();
     return () => window.removeEventListener("resize", onResize);
-  }, [fetchAll]);  // fetchAll이 isLoggedIn에 의존하므로 로그인 변경 시 자동 재실행
+  }, []);
+
+  // ── 로그인 상태 변경 시 전체 데이터 재조회
+  // localStorage에서 isLoggedIn=true로 복원된 경우(앱 업데이트/새로고침)에도 실행
+  useEffect(() => {
+    if (isLoggedIn) {
+      fetchAll();
+    }
+  }, [isLoggedIn, fetchAll]);
 
   const addHistory = useCallback((action, aType, aId, aName, detail, before="", after="") => {
     if (!currentUser) return;
@@ -1974,6 +1980,26 @@ function QRScanSection({ hw, onClose, currentUser }) {
 function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit }) {
   const [search,     setSearch]     = useState("");
   const [filterType, setFilterType] = useState("all"); // "all" | "assets" | "software"
+  const [loading,    setLoading]    = useState(false);
+
+  // 탭 진입 시 또는 수동 새로고침 시 휴지통 DB를 직접 재조회
+  const refreshTrash = useCallback(async () => {
+    setLoading(true);
+    try {
+      const d = await api.getTrash();
+      console.log("[TrashSection] refreshTrash rows:", Array.isArray(d) ? d.length : d);
+      setTrash(Array.isArray(d) ? d : []);
+    } catch(e) {
+      console.error("[TrashSection] refreshTrash error:", e);
+    } finally {
+      setLoading(false);
+    }
+  }, [setTrash]);
+
+  // 컴포넌트 마운트(탭 진입) 시 항상 최신 데이터 조회
+  useEffect(() => {
+    refreshTrash();
+  }, [refreshTrash]);
 
   // DB 자동생성 컬럼 제거 — 복구 시 이 컬럼들을 포함하면 INSERT 오류 발생
   const DB_AUTO_COLS = ["id","created_at","updated_at","deleted_at"];
@@ -2031,6 +2057,8 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit }) {
       setTrash(prev => prev.filter(t => t.id !== trashItem.id));
       addHistory("영구 삭제", aType, trashItem.id, name,
         "휴지통에서 영구 삭제", JSON.stringify(orig), "");
+      // 영구삭제 후 DB 재조회로 정합성 확인
+      refreshTrash();
     }).catch(err => alert("영구삭제 오류: " + err.message));
   };
 
@@ -2039,6 +2067,10 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit }) {
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
         <h2 style={{margin:0}}>휴지통 <span style={{fontSize:13,color:"#64748b",fontWeight:500}}>전체 {trash.length}건{filtered.length!==trash.length?` · 필터 ${filtered.length}건`:""}</span></h2>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+          {/* 새로고침 버튼 */}
+          <Btn onClick={refreshTrash} disabled={loading} style={{fontSize:12,padding:"7px 12px"}}>
+            {loading ? "조회 중..." : "🔄 새로고침"}
+          </Btn>
           {/* 구분 필터 */}
           <select value={filterType} onChange={e=>setFilterType(e.target.value)}
             style={{padding:"8px 10px",borderRadius:10,border:"1px solid #ddd",fontSize:13,background:"#fff"}}>
