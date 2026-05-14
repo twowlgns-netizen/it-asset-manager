@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 
 // ================================================================
 // 🔑 Supabase 연결 설정
@@ -391,14 +391,17 @@ export default function App() {
     }
   }, [isLoggedIn, fetchAll]);
 
-  const addHistory = useCallback((action, aType, aId, aName, detail, before="", after="") => {
+  const addHistory = useCallback((action, aType, aId, aName, detail, before="", after="", silent=false) => {
     if (!currentUser) return Promise.resolve();
     return api.addHistory({ ts: nowISO(), action, atype: aType, aid: aId, aname: aName, detail, before, after, username: currentUser.name, userrole: currentUser.role, clinic: currentUser.clinic || "" })
-      .then(() => Promise.all([
-        api.getHistory().then(d => { const l=Array.isArray(d)?d:[]; setHistory(l.sort((a,b)=>new Date(b.ts)-new Date(a.ts))); }),
-        api.getHistoryCount().then(n=>setHistoryCount(n)),
-        api.getDashboardStats().then(s=>setDashStats(s)),
-      ]))
+      .then(() => {
+        if (silent) return; // 배치 처리 중에는 재조회 생략
+        return Promise.all([
+          api.getHistory().then(d => { const l=Array.isArray(d)?d:[]; setHistory(l.sort((a,b)=>new Date(b.ts)-new Date(a.ts))); }),
+          api.getHistoryCount().then(n=>setHistoryCount(n)),
+          api.getDashboardStats().then(s=>setDashStats(s)),
+        ]);
+      })
       .catch(console.error);
   }, [currentUser]);
 
@@ -470,13 +473,18 @@ export default function App() {
           </div>
         )}
         <main style={{ padding:isMobile?"16px":"32px", paddingBottom:isMobile?130:60, boxSizing:"border-box", width:"100%" }}>
-          {view==="dashboard"  && <DashboardSection  hw={hw} sw={sw} history={history} historyCount={historyCount} trash={trash} isMobile={isMobile} dashStats={dashStats} />}
-          {view==="hardware"   && <HardwareSection   data={hw} setHw={setHw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} setView={setView} initClinic={hwClinicFilter} />}
-          {view==="software"   && <SoftwareSection   data={sw} setSw={setSw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} initClinic={swClinicFilter} />}
-          {view==="users"      && <UsersSection      users={users} setUsers={setUsers} addHistory={addHistory} isAdmin={isAdmin} currentUser={currentUser} />}
-          {view==="history"    && <HistorySection    history={history} historyCount={historyCount} currentUser={currentUser} />}
-          {view==="qrscan"    && <QRScanSection     hw={hw} currentUser={currentUser} />}
-          {view==="trash"      && <TrashSection      trash={trash} setTrash={setTrash} setHw={setHw} setSw={setSw} addHistory={addHistory} canEdit={canEdit} currentUser={currentUser} />}
+          {/* 
+            성능 최적화: 조건부 렌더링({view==="x" && ...}) 대신 display:none으로 숨김.
+            메뉴 전환 시 이미 마운트된 컴포넌트는 state를 유지한 채 즉시 표시.
+            단, QR스캔·휴지통처럼 진입 시 매번 재조회가 필요한 섹션은 조건부 렌더링 유지.
+          */}
+          <div style={{display:view==="dashboard" ?"block":"none"}}><DashboardSection  hw={hw} sw={sw} history={history} historyCount={historyCount} trash={trash} isMobile={isMobile} dashStats={dashStats} /></div>
+          <div style={{display:view==="hardware"  ?"block":"none"}}><HardwareSection   data={hw} setHw={setHw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} setView={setView} initClinic={hwClinicFilter} setHistory={setHistory} setHistoryCount={setHistoryCount} setDashStats={setDashStats} /></div>
+          <div style={{display:view==="software"  ?"block":"none"}}><SoftwareSection   data={sw} setSw={setSw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} initClinic={swClinicFilter} setHistory={setHistory} setHistoryCount={setHistoryCount} setDashStats={setDashStats} /></div>
+          <div style={{display:view==="users"     ?"block":"none"}}><UsersSection      users={users} setUsers={setUsers} addHistory={addHistory} isAdmin={isAdmin} currentUser={currentUser} /></div>
+          <div style={{display:view==="history"   ?"block":"none"}}><HistorySection    history={history} historyCount={historyCount} currentUser={currentUser} /></div>
+          {view==="qrscan" && <QRScanSection hw={hw} currentUser={currentUser} />}
+          {view==="trash"  && <TrashSection  trash={trash} setTrash={setTrash} setHw={setHw} setSw={setSw} addHistory={addHistory} canEdit={canEdit} currentUser={currentUser} />}
         </main>
       </div>
 
@@ -705,7 +713,7 @@ function DashboardSection({ hw, sw, history, historyCount, trash, isMobile, dash
 // ================================================================
 // 🖥️ [하드웨어]
 // ================================================================
-function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, currentUser, setView, initClinic }) {
+function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, currentUser, setView, initClinic, setHistory, setHistoryCount, setDashStats }) {
   const [modal,        setModal]        = useState(null);
   const [form,         setForm]         = useState({});
   const [detailItem,   setDetailItem]   = useState(null);
@@ -744,7 +752,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
     saveColPref(hwColPrefKey, n); setVisibleCols(n);
   };
 
-  const filtered = data.filter(h => {
+  const filtered = useMemo(() => data.filter(h => {
     const q = searchText.trim().toLowerCase();
     const matchText = !q || [h.gccode,h.imedcode,h.username,h.team,h.modelname,h.location,h.pcname,h.serialnumber,h.notes]
       .some(v=>(v||"").toLowerCase().includes(q));
@@ -752,11 +760,13 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
     const matchType   = !filterType   || h.assettype===filterType;
     const matchClinic = filterClinic==="all" || h.clinic===filterClinic;
     return matchText && matchStatus && matchType && matchClinic;
-  });
+  }), [data, searchText, filterStatus, filterType, filterClinic]);
 
   // 페이지네이션
   const totalPages = pageSize === 0 ? 1 : Math.ceil(filtered.length / pageSize);
-  const pagedRows  = pageSize === 0 ? filtered : filtered.slice((currentPage-1)*pageSize, currentPage*pageSize);
+  const pagedRows  = useMemo(() =>
+    pageSize === 0 ? filtered : filtered.slice((currentPage-1)*pageSize, currentPage*pageSize),
+    [filtered, pageSize, currentPage]);
 
   // 필터 바뀌면 1페이지로
   useEffect(() => setCurrentPage(1), [searchText, filterStatus, filterType, filterClinic, pageSize]);
@@ -766,32 +776,58 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
   const deleteSelected = async () => {
     if (selectedIds.size === 0) return alert("삭제할 항목을 선택하세요.");
     if (!window.confirm(`선택한 ${selectedIds.size}건을 휴지통으로 이동하시겠습니까?`)) return;
+
     const items = data.filter(h => selectedIds.has(h.id));
-    let ok = 0;
-    for (const item of items) {
-      const name = item.gccode||item.modelname||"자산";
-      try {
-        // ① 휴지통 저장 먼저 (item 객체 그대로 전달 - API에서 jsonb 처리)
-        const trashResult = await api.addTrash({ item_data: item, table_name:"assets", deletedat:nowISO() });
-        // 배열/객체 모두 허용 - id가 있으면 성공
-        const saved = Array.isArray(trashResult) ? trashResult[0] : trashResult;
-        if (!saved || !saved.id) throw new Error("휴지통 저장 실패");
-        // ② 휴지통 저장 성공 후 원본 삭제
-        await api.deleteHW(item.id);
-        // ③ UI에 즉시 반영 (페이지 이동 전 휴지통에 보이도록)
-        setTrash(prev => [...prev, saved]);
-        await addHistory("하드웨어 삭제","hardware",item.id,name,
-          `선택삭제-휴지통 / 지점:${item.clinic||"-"} / 팀:${item.team||"-"} / 사용자:${item.username||"-"}`,
-          JSON.stringify(item),"");
-        ok++;
-      } catch(e) { console.error("선택삭제 오류:", e); alert(`오류(${name}): ${e.message}`); }
-    }
+    const BATCH = 10; // 동시 처리 최대 건수
+    let ok = 0, fail = 0;
+    const savedTrash = [];
+
+    // ── UI에서 즉시 제거 (낙관적 업데이트)
+    const deletingIds = new Set(items.map(i=>i.id));
+    setHw(prev => prev.filter(h => !deletingIds.has(h.id)));
     setSelectedIds(new Set());
-    // DB에서 최신 상태 재조회 (정합성 확인)
-    const [fresh, newTrash] = await Promise.all([api.getHW(), api.getTrash()]);
+
+    // ── BATCH 단위로 병렬 처리
+    for (let i = 0; i < items.length; i += BATCH) {
+      const chunk = items.slice(i, i + BATCH);
+      const results = await Promise.allSettled(
+        chunk.map(async (item) => {
+          const name = item.gccode||item.modelname||"자산";
+          // ① 휴지통 저장
+          const trashResult = await api.addTrash({ item_data: item, table_name:"assets", deletedat:nowISO() });
+          const saved = Array.isArray(trashResult) ? trashResult[0] : trashResult;
+          if (!saved?.id) throw new Error("휴지통 저장 실패");
+          // ② 원본 삭제
+          await api.deleteHW(item.id);
+          // ③ 로그 기록 (silent=true: 재조회 생략)
+          addHistory("하드웨어 삭제","hardware",item.id,name,
+            `선택삭제-휴지통 / 지점:${item.clinic||"-"} / 팀:${item.team||"-"} / 사용자:${item.username||"-"}`,
+            JSON.stringify(item),"", true);
+          return saved;
+        })
+      );
+      results.forEach(r => {
+        if (r.status === "fulfilled") { savedTrash.push(r.value); ok++; }
+        else { fail++; console.error("선택삭제 오류:", r.reason); }
+      });
+    }
+
+    // ── 완료 후 일괄 UI 반영 + 재조회
+    if (savedTrash.length > 0) setTrash(prev => [...prev, ...savedTrash]);
+    const [fresh, newTrash, , newCount, newStats] = await Promise.all([
+      api.getHW(), api.getTrash(), null,
+      api.getHistoryCount(),
+      api.getDashboardStats(),
+    ]);
     setHw(Array.isArray(fresh)?fresh:[]);
     setTrash(Array.isArray(newTrash)?newTrash:[]);
-    if(ok>0) alert(`${ok}건이 휴지통으로 이동됐습니다.`);
+    setHistoryCount(newCount||0);
+    setDashStats(newStats);
+    // 로그 목록도 갱신
+    api.getHistory().then(d=>{ const l=Array.isArray(d)?d:[]; setHistory(l.sort((a,b)=>new Date(b.ts)-new Date(a.ts))); }).catch(()=>{});
+
+    if (fail > 0) alert(`완료: ${ok}건 성공, ${fail}건 실패`);
+    else if (ok > 0) alert(`${ok}건이 휴지통으로 이동됐습니다.`);
   };
 
   const save = () => {
@@ -1026,13 +1062,18 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
       const gcCodes = items.map(it=>it.gccode||it.modelname||it.imedcode||"-").join(", ");
       const summary = `파일명: ${file.name} / ${items.length}건 / GC코드: ${gcCodes.length>200?gcCodes.slice(0,200)+"...":gcCodes}`;
       await addHistory("파일 가져오기","hardware","",`${items.length}건`,summary,"",JSON.stringify(items.map(it=>({num:it.num,gccode:it.gccode,imedcode:it.imedcode,modelname:it.modelname,assetstatus:it.assetstatus,clinic:it.clinic,team:it.team,username:it.username}))));
-      // 항목별 개별 로그 — 순차 await으로 ts 중복 및 번호 충돌 방지
-      for(let idx=0;idx<items.length;idx++){
-        const it=items[idx];
+      // 항목별 개별 로그 — 병렬 처리 (silent=true: 매번 재조회 생략)
+      await Promise.allSettled(items.map((it, idx) => {
         const name=it.gccode||it.modelname||it.imedcode||`항목${idx+1}`;
         const detail=`파일가져오기 (${file.name}) / 지점:${it.clinic||"-"} / 팀:${it.team||"-"} / 사용자:${it.username||"-"} / 상태:${it.assetstatus||"-"}`;
-        await addHistory("장비 등록(가져오기)","hardware","",name,detail,"",JSON.stringify(it));
-      }
+        return addHistory("장비 등록(가져오기)","hardware","",name,detail,"",JSON.stringify(it), true);
+      }));
+      // 완료 후 한 번만 재조회
+      await Promise.all([
+        api.getHistoryCount().then(n=>setHistoryCount(n)),
+        api.getDashboardStats().then(s=>setDashStats(s)),
+        api.getHistory().then(d=>{ const l=Array.isArray(d)?d:[]; setHistory(l.sort((a,b)=>new Date(b.ts)-new Date(a.ts))); }),
+      ]);
       alert(`${items.length}건 완료!`);
     } catch(err){ alert("가져오기 실패: "+err.message); }
     finally{ setImportLoading(false); e.target.value=""; }
@@ -1071,24 +1112,26 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
 
   const allPageIds = pagedRows.map(h=>h.id);
   const isAllChecked = allPageIds.length>0 && allPageIds.every(id=>selectedIds.has(id));
-  const activeCols = [
-    {
-      label: () => (
-        <input type="checkbox" checked={isAllChecked}
-          onChange={e=>{ const n=new Set(selectedIds); if(e.target.checked){allPageIds.forEach(id=>n.add(id));}else{allPageIds.forEach(id=>n.delete(id));} setSelectedIds(n); }}
-          style={{accentColor:"#0f6e56",width:15,height:15,cursor:"pointer",display:"block",margin:"0 auto"}} />
-      ),
-      minWidth:46, noClip:true,
-      render: h=>(
-        <input type="checkbox" checked={selectedIds.has(h.id)}
-          onChange={e=>{ const n=new Set(selectedIds); e.target.checked?n.add(h.id):n.delete(h.id); setSelectedIds(n); }}
-          onClick={e=>e.stopPropagation()}
-          style={{accentColor:"#0f6e56",width:15,height:15,cursor:"pointer",display:"block",margin:"0 auto"}} />
-      )
-    },
-    ...ALL_HW_COLS.filter(c=>visibleCols.has(c.key)).map(c=>({ key:c.key, label:c.label, render:COL_RENDERERS[c.key]||(h=>h[c.key]||"-") }))
-  ];
-  activeCols.push({ label:"관리", minWidth: canEdit ? 190 : 120, noClip:true, render: h=>(
+
+  const activeCols = useMemo(() => {
+    const cols = [
+      {
+        label: () => (
+          <input type="checkbox" checked={isAllChecked}
+            onChange={e=>{ const n=new Set(selectedIds); if(e.target.checked){allPageIds.forEach(id=>n.add(id));}else{allPageIds.forEach(id=>n.delete(id));} setSelectedIds(n); }}
+            style={{accentColor:"#0f6e56",width:15,height:15,cursor:"pointer",display:"block",margin:"0 auto"}} />
+        ),
+        minWidth:46, noClip:true,
+        render: h=>(
+          <input type="checkbox" checked={selectedIds.has(h.id)}
+            onChange={e=>{ const n=new Set(selectedIds); e.target.checked?n.add(h.id):n.delete(h.id); setSelectedIds(n); }}
+            onClick={e=>e.stopPropagation()}
+            style={{accentColor:"#0f6e56",width:15,height:15,cursor:"pointer",display:"block",margin:"0 auto"}} />
+        )
+      },
+      ...ALL_HW_COLS.filter(c=>visibleCols.has(c.key)).map(c=>({ key:c.key, label:c.label, render:COL_RENDERERS[c.key]||(h=>h[c.key]||"-") }))
+    ];
+    cols.push({ label:"관리", minWidth: canEdit ? 190 : 120, noClip:true, render: h=>(
     <div style={{display:"flex",gap:4,flexWrap:"nowrap"}}>
       <Btn onClick={()=>{setDetailItem(h);setModal("detail");}} style={{fontSize:11,padding:"5px 7px"}}>상세</Btn>
       <Btn onClick={()=>{setQrItem(h);setModal("qr");}}         style={{fontSize:11,padding:"5px 7px"}}>QR</Btn>
@@ -1096,6 +1139,9 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
       {canEdit && <Btn onClick={()=>deleteItem(h)} variant="danger"         style={{fontSize:11,padding:"5px 7px"}}>삭제</Btn>}
     </div>
   )});
+    return cols;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleCols, selectedIds, isAllChecked, canEdit, pagedRows]);
 
   return (
     <div>
@@ -1364,7 +1410,7 @@ const saveColPref = (key, set) => {
   try { localStorage.setItem(key, JSON.stringify([...set])); } catch {}
 };
 
-function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, currentUser, initClinic }) {
+function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, currentUser, initClinic, setHistory, setHistoryCount, setDashStats }) {
   const colPrefKey = `sw_cols_${currentUser?.loginid||"default"}`;
   const swPageSizeKey = `sw_pagesize_${currentUser?.loginid||"default"}`;
   const [modal,        setModal]       = useState(null);
@@ -1397,17 +1443,19 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
   });
   const toggleAll = (all) => { const n=all?new Set(ALL_SW_COLS.map(c=>c.key)):new Set(["name"]); saveColPref(colPrefKey,n); setVisibleCols(n); };
 
-  const filtered = data.filter(s=>{
+  const filtered = useMemo(() => data.filter(s=>{
     const q=search.trim().toLowerCase();
     const mt=!q||[s.name,s.vendor,s.assignedto,s.licensekey,s.version].some(v=>(v||"").toLowerCase().includes(q));
     const mc=filterClinic==="all"||s.clinic===filterClinic;
     const ms=!filterStatus||s.status===filterStatus;
     const mk=!filterCat||s.category===filterCat;
     return mt&&mc&&ms&&mk;
-  });
+  }), [data, search, filterClinic, filterStatus, filterCat]);
 
   const totalPages  = pageSize===0?1:Math.ceil(filtered.length/pageSize);
-  const pagedRows   = pageSize===0?filtered:filtered.slice((currentPage-1)*pageSize,currentPage*pageSize);
+  const pagedRows   = useMemo(() =>
+    pageSize===0?filtered:filtered.slice((currentPage-1)*pageSize,currentPage*pageSize),
+    [filtered, pageSize, currentPage]);
   useEffect(()=>setCurrentPage(1),[search,filterClinic,filterStatus,filterCat,pageSize]);
 
 
@@ -1415,27 +1463,50 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
   const deleteSelected = async () => {
     if (selectedIds.size === 0) return alert("삭제할 항목을 선택하세요.");
     if (!window.confirm(`선택한 ${selectedIds.size}건을 휴지통으로 이동하시겠습니까?`)) return;
+
     const items = data.filter(s => selectedIds.has(s.id));
-    let ok = 0;
-    for (const item of items) {
-      const name = item.name||"소프트웨어";
-      try {
-        const trashResult = await api.addTrash({ item_data: item, table_name:"software", deletedat:nowISO() });
-        const saved = Array.isArray(trashResult) ? trashResult[0] : trashResult;
-        if (!saved || (typeof saved === "object" && Object.keys(saved).length === 0)) throw new Error("휴지통 저장 실패");
-        await api.deleteSW(item.id);
-        setTrash(prev => [...prev, saved]);
-        addHistory("소프트웨어 삭제","software",item.id,name,
-          `선택삭제-휴지통 / 벤더:${item.vendor||"-"} / 담당:${item.assignedto||"-"} / 지점:${item.clinic||"-"}`,
-          JSON.stringify(item),"");
-        ok++;
-      } catch(e) { console.error("선택삭제 오류:", e); alert(`오류(${name}): ${e.message}`); }
-    }
+    const BATCH = 10;
+    let ok = 0, fail = 0;
+    const savedTrash = [];
+
+    // ── 낙관적 UI 업데이트 (즉시 목록에서 제거)
+    const deletingIds = new Set(items.map(i=>i.id));
+    setSw(prev => prev.filter(s => !deletingIds.has(s.id)));
     setSelectedIds(new Set());
-    const [fresh, newTrash] = await Promise.all([api.getSW(), api.getTrash()]);
+
+    for (let i = 0; i < items.length; i += BATCH) {
+      const chunk = items.slice(i, i + BATCH);
+      const results = await Promise.allSettled(
+        chunk.map(async (item) => {
+          const name = item.name||"소프트웨어";
+          const trashResult = await api.addTrash({ item_data: item, table_name:"software", deletedat:nowISO() });
+          const saved = Array.isArray(trashResult) ? trashResult[0] : trashResult;
+          if (!saved?.id) throw new Error("휴지통 저장 실패");
+          await api.deleteSW(item.id);
+          addHistory("소프트웨어 삭제","software",item.id,name,
+            `선택삭제-휴지통 / 벤더:${item.vendor||"-"} / 담당:${item.assignedto||"-"} / 지점:${item.clinic||"-"}`,
+            JSON.stringify(item),"", true);
+          return saved;
+        })
+      );
+      results.forEach(r => {
+        if (r.status === "fulfilled") { savedTrash.push(r.value); ok++; }
+        else { fail++; console.error("SW 선택삭제 오류:", r.reason); }
+      });
+    }
+
+    if (savedTrash.length > 0) setTrash(prev => [...prev, ...savedTrash]);
+    const [fresh, newTrash, newCount, newStats] = await Promise.all([
+      api.getSW(), api.getTrash(), api.getHistoryCount(), api.getDashboardStats(),
+    ]);
     setSw(Array.isArray(fresh)?fresh:[]);
     setTrash(Array.isArray(newTrash)?newTrash:[]);
-    if(ok>0) alert(`${ok}건이 휴지통으로 이동됐습니다.`);
+    setHistoryCount(newCount||0);
+    setDashStats(newStats);
+    api.getHistory().then(d=>{ const l=Array.isArray(d)?d:[]; setHistory(l.sort((a,b)=>new Date(b.ts)-new Date(a.ts))); }).catch(()=>{});
+
+    if (fail > 0) alert(`완료: ${ok}건 성공, ${fail}건 실패`);
+    else if (ok > 0) alert(`${ok}건이 휴지통으로 이동됐습니다.`);
   };
 
   const save = () => {
@@ -3017,6 +3088,10 @@ function ResizeHandle({ onResize, onDoubleClick }) {
     />
   );
 }
+// ── 가상 스크롤 상수
+const VIRT_ROW_H = 40;   // 행 높이(px) — 고정
+const VIRT_OVERSCAN = 8; // 뷰포트 외 추가 렌더 행 수
+
 function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowDoubleClick}){
   const calcW = (c) => {
     if(c.minWidth) return c.minWidth;
@@ -3024,47 +3099,72 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
     return Math.max(80, lbl.length * 16 + 32);
   };
   const [colWidths,   setColWidths]   = useState(() => cols.map(calcW));
-  const [selectedRow, setSelectedRow] = useState(null); // 기능2: 선택된 행
-  const [sortKey,     setSortKey]     = useState(null);  // 기능5,6: 정렬 컬럼
-  const [sortDir,     setSortDir]     = useState("asc"); // "asc" | "desc"
-  const [ctxMenu,     setCtxMenu]     = useState(null);  // {x,y,colIdx}
-  const ctxRef = useRef(null);
+  const [selectedRow, setSelectedRow] = useState(null);
+  const [sortKey,     setSortKey]     = useState(null);
+  const [sortDir,     setSortDir]     = useState("asc");
+  const [ctxMenu,     setCtxMenu]     = useState(null);
+
+  // ── 가상 스크롤 state
+  const [scrollTop,   setScrollTop]   = useState(0);
+  const [viewportH,   setViewportH]   = useState(600);
+  const bodyRef  = useRef(null); // tbody 스크롤 컨테이너
+  const ctxRef   = useRef(null);
+  const scrollRef = useRef(null); // 가로 스크롤
+  const thumbRef  = useRef(null);
+  const trackRef  = useRef(null);
+
+  // 가상 스크롤 적용 임계값: 200행 이상일 때만 가상화
+  const VIRT_THRESHOLD = 200;
+  const useVirtual = rows.length >= VIRT_THRESHOLD;
 
   useEffect(() => {
     setColWidths(prev => prev.length !== cols.length ? cols.map(calcW) : prev);
   }, [cols.length]);
 
-  // 컨텍스트 메뉴 바깥 클릭 시 닫기
   useEffect(() => {
     const h = (e) => { if(ctxRef.current && !ctxRef.current.contains(e.target)) setCtxMenu(null); };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  // 기능5,6: 정렬 처리 — col.key 또는 col.sortVal(row) 함수 지원
-  const sortedRows = (() => {
+  // 뷰포트 높이 관측
+  useEffect(() => {
+    if (!useVirtual || !bodyRef.current) return;
+    const ro = new ResizeObserver(entries => {
+      for (const e of entries) setViewportH(e.contentRect.height);
+    });
+    ro.observe(bodyRef.current);
+    setViewportH(bodyRef.current.clientHeight);
+    return () => ro.disconnect();
+  }, [useVirtual]);
+
+  // 정렬
+  const sortedRows = useMemo(() => {
     if(sortKey === null) return rows;
     const col = cols[sortKey];
     if(!col || col.noClip === true) return rows;
-    // 정렬값 추출: sortVal 함수 우선, 없으면 key로 row 직접 접근
     const getVal = col.sortVal
       ? (row) => { try { const v = col.sortVal(row); return v == null ? "" : String(v).toLowerCase(); } catch { return ""; } }
-      : col.key
-      ? (row) => (row[col.key] ?? "").toString().toLowerCase()
-      : null;
-    if(!getVal) return rows; // key도 sortVal도 없으면 정렬 불가
+      : col.key ? (row) => (row[col.key] ?? "").toString().toLowerCase() : null;
+    if(!getVal) return rows;
     return [...rows].sort((a, b) => {
-      const av = getVal(a);
-      const bv = getVal(b);
+      const av = getVal(a), bv = getVal(b);
       const n1 = parseFloat(av), n2 = parseFloat(bv);
       if(!isNaN(n1) && !isNaN(n2)) return sortDir==="asc" ? n1-n2 : n2-n1;
       return sortDir==="asc" ? av.localeCompare(bv,"ko") : bv.localeCompare(av,"ko");
     });
-  })();
+  }, [rows, sortKey, sortDir, cols]);
+
+  // 가상 스크롤 범위 계산
+  const totalHeight = sortedRows.length * VIRT_ROW_H;
+  const startIdx = useVirtual ? Math.max(0, Math.floor(scrollTop / VIRT_ROW_H) - VIRT_OVERSCAN) : 0;
+  const endIdx   = useVirtual ? Math.min(sortedRows.length, Math.ceil((scrollTop + viewportH) / VIRT_ROW_H) + VIRT_OVERSCAN) : sortedRows.length;
+  const visibleRows = sortedRows.slice(startIdx, endIdx);
+  const paddingTop    = useVirtual ? startIdx * VIRT_ROW_H : 0;
+  const paddingBottom = useVirtual ? (sortedRows.length - endIdx) * VIRT_ROW_H : 0;
 
   const handleColHeaderClick = (i) => {
     const col = cols[i];
-    // key도 sortVal도 없고 noClip인 컬럼은 정렬 불가
     if(!col || typeof col.label === "function" || col.noClip) return;
     if(!col.key && !col.sortVal) return;
     if(sortKey === i) setSortDir(d => d==="asc" ? "desc" : "asc");
@@ -3080,44 +3180,32 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
     setCtxMenu({ x: e.clientX, y: e.clientY, colIdx: i });
   };
 
-  // 기능4: 컬럼 구분선 더블클릭 → 내용 길이 기준 자동 너비
   const autoFitCol = (i) => {
     const col = cols[i];
     if(!col) return;
     const lbl = typeof col.label === "function" ? "" : (col.label || "");
-    // 헤더 너비: 한글은 14px, 영문은 8px 기준 + 여백
     const labelW = [...lbl].reduce((a,ch)=>a+(ch.charCodeAt(0)>127?14:8),0) + 52;
     let maxContentW = labelW;
     if(col.key) {
-      // 전체 rows 기준으로 최대 너비 계산 (최대 200행 샘플)
-      const sample = rows.slice(0, 200);
-      sample.forEach(row => {
+      rows.slice(0, 200).forEach(row => {
         const val = String(row[col.key] ?? "");
-        // 한글: 14px, 영문/숫자: 8px + 셀 패딩 24px
         const w = [...val].reduce((a,ch)=>a+(ch.charCodeAt(0)>127?14:8),0) + 32;
         if(w > maxContentW) maxContentW = w;
       });
     }
-    // 최소 60px, 최대 500px
-    const newW = Math.min(Math.max(maxContentW, 60), 500);
-    setColWidths(prev => { const next=[...prev]; next[i]=newW; return next; });
+    setColWidths(prev => { const next=[...prev]; next[i]=Math.min(Math.max(maxContentW,60),500); return next; });
   };
 
   const handleResize = (i, delta) => {
-    setColWidths(prev => {
-      const next = [...prev];
-      next[i] = Math.max(50, next[i] + delta);
-      return next;
-    });
+    setColWidths(prev => { const next=[...prev]; next[i]=Math.max(50,next[i]+delta); return next; });
   };
 
-  const scrollRef = useRef(null);
-  const thumbRef  = useRef(null);
-  const trackRef  = useRef(null);
   const totalWidth = colWidths.reduce((a,b)=>a+b,0);
 
-  const syncThumb = () => {
-    const el = scrollRef.current; const tr = trackRef.current; const th = thumbRef.current;
+  // 가로 스크롤 동기화 (가상 스크롤 컨테이너 ↔ 헤더)
+  const hScrollRef = useRef(null); // 헤더+바디 공통 가로 컨테이너
+  const syncThumb = useCallback(() => {
+    const el = hScrollRef.current; const tr = trackRef.current; const th = thumbRef.current;
     if(!el||!tr||!th) return;
     const ratio = el.clientWidth / el.scrollWidth;
     const thumbW = Math.max(40, tr.clientWidth * ratio);
@@ -3126,167 +3214,186 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
     th.style.width = thumbW + "px";
     th.style.left  = (maxScroll > 0 ? (el.scrollLeft / maxScroll) * maxThumb : 0) + "px";
     tr.style.display = ratio >= 1 ? "none" : "block";
-  };
+  }, []);
 
   useEffect(() => {
-    const el = scrollRef.current;
+    const el = hScrollRef.current;
     if(!el) return;
     syncThumb();
     el.addEventListener("scroll", syncThumb);
     const ro = new ResizeObserver(syncThumb);
     ro.observe(el);
     return () => { el.removeEventListener("scroll", syncThumb); ro.disconnect(); };
-  }, [totalWidth, colWidths]);
+  }, [totalWidth, syncThumb]);
 
   const startThumbDrag = (e) => {
     e.preventDefault();
-    const el = scrollRef.current; const tr = trackRef.current; const th = thumbRef.current;
+    const el = hScrollRef.current; const tr = trackRef.current; const th = thumbRef.current;
     if(!el||!tr||!th) return;
-    const startX = e.clientX;
-    const startLeft = el.scrollLeft;
-    const trackW = tr.clientWidth;
-    const thumbW = th.offsetWidth;
+    const startX = e.clientX, startLeft = el.scrollLeft;
+    const trackW = tr.clientWidth, thumbW = th.offsetWidth;
     const maxScroll = el.scrollWidth - el.clientWidth;
     const onMove = (mv) => {
-      const delta = mv.clientX - startX;
-      const ratio = delta / (trackW - thumbW);
-      el.scrollLeft = Math.max(0, Math.min(maxScroll, startLeft + ratio * maxScroll));
+      el.scrollLeft = Math.max(0, Math.min(maxScroll, startLeft + (mv.clientX-startX)/(trackW-thumbW)*maxScroll));
     };
-    const onUp = () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    const onUp = () => { window.removeEventListener("mousemove",onMove); window.removeEventListener("mouseup",onUp); };
+    window.addEventListener("mousemove",onMove); window.addEventListener("mouseup",onUp);
   };
 
-  // 기능1: 줄 색상 팔레트 (엑셀 스타일 - 짝수/홀수 교번)
   const rowBg = (ri, isSelected) => {
-    if(isSelected) return "#d1fae5"; // 선택된 행: 민트 그린
-    return ri % 2 === 0 ? "#ffffff" : "#f8fafc"; // 홀짝 교번
+    if(isSelected) return "#d1fae5";
+    return ri % 2 === 0 ? "#ffffff" : "#f8fafc";
   };
-
   const sortIndicator = (i) => {
     const col = cols[i];
-    if(!col || col.noClip || (!col.key && !col.sortVal)) return null; // 정렬 불가 컬럼
+    if(!col || col.noClip || (!col.key && !col.sortVal)) return null;
     if(sortKey !== i) return <span style={{color:"#d1d5db",fontSize:9,marginLeft:3}}>⇅</span>;
     return <span style={{color:"#0f6e56",fontSize:9,marginLeft:3}}>{sortDir==="asc"?"▲":"▼"}</span>;
   };
 
+  // 가상 스크롤 세로 스크롤 핸들러
+  const handleBodyScroll = useCallback((e) => {
+    setScrollTop(e.currentTarget.scrollTop);
+  }, []);
+
+  // 최대 테이블 높이: 가상 스크롤 시 고정, 아닐 때 제한 없음
+  const bodyMaxH = useVirtual ? Math.min(600, Math.max(300, viewportH)) : undefined;
+
   return (
     <div style={{background:"#fff",borderRadius:14,border:"1px solid #eee",display:"flex",flexDirection:"column",position:"relative"}}>
-      <div ref={scrollRef} style={{overflowX:"auto",overflowY:"visible",scrollbarWidth:"none",msOverflowStyle:"none"}}
+      {/* 헤더 + 바디 공통 가로 스크롤 컨테이너 */}
+      <div ref={hScrollRef} style={{overflowX:"auto",overflowY:"hidden",scrollbarWidth:"none",msOverflowStyle:"none"}}
         onScroll={syncThumb}>
         <style>{".hw-no-sb::-webkit-scrollbar{display:none}"}</style>
-        <div className="hw-no-sb">
-        <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:totalWidth}}>
-          <colgroup>
-            {colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}
-          </colgroup>
-          <thead>
-            {/* 기능1: 헤더에도 배경색 */}
-            <tr style={{background:"linear-gradient(180deg,#f1f5f9 0%,#e8eef4 100%)"}}>
-              {cols.map((c,i)=>{
-                const isSortable = typeof c.label !== "function" && !c.noClip;
-                return (
-                <th key={i}
-                  onClick={()=>handleColHeaderClick(i)}
-                  onContextMenu={(e)=>handleColHeaderRightClick(e,i)}
-                  style={{padding:i===0?"10px 4px":"12px 12px",textAlign:i===0?"center":"left",fontSize:11,color:"#475569",
-                    borderBottom:"2px solid #e2e8f0",borderRight:"1px solid #e8eef4",whiteSpace:"nowrap",fontWeight:700,
-                    position:"relative",userSelect:"none",overflow:"visible",boxSizing:"border-box",
-                    cursor:isSortable?"pointer":"default",
-                    transition:"background 0.1s"}}>
-                  <span style={{display:"flex",alignItems:"center",gap:2,overflow:"hidden",paddingRight:i===0?0:8}}>
-                    <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{typeof c.label==="function"?c.label():c.label}</span>
-                    {isSortable && sortIndicator(i)}
-                  </span>
-                  <ResizeHandle onResize={delta=>handleResize(i,delta)} onDoubleClick={()=>autoFitCol(i)}/>
-                </th>
-              )})}
-            </tr>
-          </thead>
-          <tbody>
-            {sortedRows.length===0
-              ?<tr><td colSpan={cols.length} style={{padding:40,textAlign:"center",color:"#94a3b8"}}>{empty}</td></tr>
-              :sortedRows.map((row,ri)=>{
-                const isSelected = selectedRow === ri;
-                return (
-                <tr key={ri}
-                  style={{borderBottom:"1px solid #f0f4f8", background:rowBg(ri,isSelected), cursor:onRowDoubleClick?"pointer":"default", transition:"background 0.1s"}}
-                  onClick={()=>setSelectedRow(isSelected?null:ri)}
-                  onDoubleClick={()=>onRowDoubleClick && onRowDoubleClick(row)}
-                  onMouseEnter={e=>{ if(!isSelected) e.currentTarget.style.background="#eff6ff"; }}
-                  onMouseLeave={e=>{ e.currentTarget.style.background=rowBg(ri,isSelected); }}>
-                  {cols.map((c,ci)=>(
-                    <td key={ci} style={{padding:ci===0?"9px 4px":"11px 12px",fontSize:13,
-                      textAlign:ci===0?"center":"left",
-                      overflow: c.noClip ? "visible" : "hidden",
-                      textOverflow: c.noClip ? "unset" : "ellipsis",
-                      whiteSpace: c.noClip ? "normal" : "nowrap",
-                      borderRight:"1px solid #f0f4f8",
-                      boxSizing:"border-box"}}>
-                      {c.render?c.render(row,ri,sortedRows):row[c.key]}
-                    </td>
-                  ))}
-                </tr>
-              );})}
-          </tbody>
-        </table>
+        <div className="hw-no-sb" style={{width:totalWidth}}>
+          {/* 헤더 */}
+          <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:totalWidth}}>
+            <colgroup>{colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}</colgroup>
+            <thead>
+              <tr style={{background:"linear-gradient(180deg,#f1f5f9 0%,#e8eef4 100%)"}}>
+                {cols.map((c,i)=>{
+                  const isSortable = typeof c.label !== "function" && !c.noClip;
+                  return (
+                    <th key={i}
+                      onClick={()=>handleColHeaderClick(i)}
+                      onContextMenu={(e)=>handleColHeaderRightClick(e,i)}
+                      style={{padding:i===0?"10px 4px":"12px 12px",textAlign:i===0?"center":"left",fontSize:11,color:"#475569",
+                        borderBottom:"2px solid #e2e8f0",borderRight:"1px solid #e8eef4",whiteSpace:"nowrap",fontWeight:700,
+                        position:"relative",userSelect:"none",overflow:"visible",boxSizing:"border-box",
+                        cursor:isSortable?"pointer":"default"}}>
+                      <span style={{display:"flex",alignItems:"center",gap:2,overflow:"hidden",paddingRight:i===0?0:8}}>
+                        <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{typeof c.label==="function"?c.label():c.label}</span>
+                        {isSortable && sortIndicator(i)}
+                      </span>
+                      <ResizeHandle onResize={delta=>handleResize(i,delta)} onDoubleClick={()=>autoFitCol(i)}/>
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+          </table>
+
+          {/* 바디 — 가상 스크롤 or 일반 */}
+          <div
+            ref={bodyRef}
+            onScroll={useVirtual ? handleBodyScroll : undefined}
+            style={{
+              overflowY: useVirtual ? "auto" : "visible",
+              maxHeight: useVirtual ? 600 : undefined,
+              scrollbarWidth: "thin",
+              scrollbarColor: "#94a3b8 #f1f5f9",
+            }}>
+            {sortedRows.length === 0
+              ? <div style={{padding:40,textAlign:"center",color:"#94a3b8"}}>{empty}</div>
+              : (
+                <div style={{position:"relative", height: useVirtual ? totalHeight : undefined}}>
+                  {useVirtual && <div style={{height:paddingTop}}/>}
+                  <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:totalWidth}}>
+                    <colgroup>{colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}</colgroup>
+                    <tbody>
+                      {visibleRows.map((row, vi) => {
+                        const ri = startIdx + vi;
+                        const isSelected = selectedRow === ri;
+                        return (
+                          <tr key={ri}
+                            style={{
+                              borderBottom:"1px solid #f0f4f8",
+                              background: rowBg(ri, isSelected),
+                              cursor: onRowDoubleClick ? "pointer" : "default",
+                              height: useVirtual ? VIRT_ROW_H : undefined,
+                            }}
+                            onClick={()=>setSelectedRow(isSelected?null:ri)}
+                            onDoubleClick={()=>onRowDoubleClick && onRowDoubleClick(row)}
+                            onMouseEnter={e=>{ if(!isSelected) e.currentTarget.style.background="#eff6ff"; }}
+                            onMouseLeave={e=>{ e.currentTarget.style.background=rowBg(ri,isSelected); }}>
+                            {cols.map((c,ci)=>(
+                              <td key={ci} style={{
+                                padding:ci===0?"9px 4px":"11px 12px",fontSize:13,
+                                textAlign:ci===0?"center":"left",
+                                overflow:c.noClip?"visible":"hidden",
+                                textOverflow:c.noClip?"unset":"ellipsis",
+                                whiteSpace:c.noClip?"normal":"nowrap",
+                                borderRight:"1px solid #f0f4f8",
+                                boxSizing:"border-box",
+                                height: useVirtual ? VIRT_ROW_H : undefined,
+                              }}>
+                                {c.render?c.render(row,ri,sortedRows):row[c.key]}
+                              </td>
+                            ))}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {useVirtual && <div style={{height:paddingBottom}}/>}
+                </div>
+              )
+            }
+          </div>
         </div>
       </div>
 
-      {/* 우클릭 컨텍스트 메뉴 (기능6: 정렬 옵션) */}
+      {/* 우클릭 컨텍스트 메뉴 */}
       {ctxMenu && (
         <div ref={ctxRef} style={{position:"fixed",left:ctxMenu.x,top:ctxMenu.y,background:"#fff",border:"1px solid #e2e8f0",
           borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",zIndex:9999,minWidth:160,overflow:"hidden"}}>
           <div style={{padding:"8px 14px",fontSize:11,color:"#94a3b8",borderBottom:"1px solid #f0f0f0",fontWeight:600}}>
             {typeof cols[ctxMenu.colIdx]?.label === "string" ? cols[ctxMenu.colIdx].label : "정렬"} 정렬
           </div>
-          {[
-            { label:"▲ 오름차순 (A→Z)", dir:"asc" },
-            { label:"▼ 내림차순 (Z→A)", dir:"desc" },
-          ].map(opt=>(
+          {[{label:"▲ 오름차순 (A→Z)",dir:"asc"},{label:"▼ 내림차순 (Z→A)",dir:"desc"}].map(opt=>(
             <div key={opt.dir} onClick={()=>{ setSortKey(ctxMenu.colIdx); setSortDir(opt.dir); setCtxMenu(null); }}
               style={{padding:"10px 16px",fontSize:13,cursor:"pointer",
-                background: sortKey===ctxMenu.colIdx && sortDir===opt.dir ? "#e8f5e9":"transparent",
-                color: sortKey===ctxMenu.colIdx && sortDir===opt.dir ? "#0f6e56":"#334155",
-                fontWeight: sortKey===ctxMenu.colIdx && sortDir===opt.dir ? 700:400}}
+                background:sortKey===ctxMenu.colIdx&&sortDir===opt.dir?"#e8f5e9":"transparent",
+                color:sortKey===ctxMenu.colIdx&&sortDir===opt.dir?"#0f6e56":"#334155",
+                fontWeight:sortKey===ctxMenu.colIdx&&sortDir===opt.dir?700:400}}
               onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
-              onMouseLeave={e=>e.currentTarget.style.background=sortKey===ctxMenu.colIdx && sortDir===opt.dir?"#e8f5e9":"transparent"}>
+              onMouseLeave={e=>e.currentTarget.style.background=sortKey===ctxMenu.colIdx&&sortDir===opt.dir?"#e8f5e9":"transparent"}>
               {opt.label}
             </div>
           ))}
           <div onClick={()=>{ setSortKey(null); setCtxMenu(null); }}
             style={{padding:"10px 16px",fontSize:13,cursor:"pointer",color:"#94a3b8",borderTop:"1px solid #f0f0f0"}}
             onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
-            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-            ✕ 정렬 해제
-          </div>
+            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>✕ 정렬 해제</div>
           <div onClick={()=>{ autoFitCol(ctxMenu.colIdx); setCtxMenu(null); }}
             style={{padding:"10px 16px",fontSize:13,cursor:"pointer",color:"#334155",borderTop:"1px solid #f0f0f0"}}
             onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
-            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-            ↔ 너비 자동 맞춤
-          </div>
+            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>↔ 너비 자동 맞춤</div>
         </div>
       )}
 
       {/* 커스텀 가로 스크롤바 */}
       <div ref={trackRef} style={{position:"sticky",bottom:0,height:12,background:"#f1f5f9",borderTop:"1px solid #e2e8f0",borderRadius:"0 0 14px 14px",cursor:"pointer"}}
         onClick={e=>{
-          const el=scrollRef.current; const tr=trackRef.current; const th=thumbRef.current;
+          const el=hScrollRef.current; const tr=trackRef.current; const th=thumbRef.current;
           if(!el||!tr||!th) return;
           const rect=tr.getBoundingClientRect();
-          const clickX=e.clientX-rect.left;
-          const ratio=clickX/tr.clientWidth;
-          el.scrollLeft=(el.scrollWidth-el.clientWidth)*ratio;
+          el.scrollLeft=(el.scrollWidth-el.clientWidth)*((e.clientX-rect.left)/tr.clientWidth);
         }}>
         <div ref={thumbRef} onMouseDown={startThumbDrag}
-          style={{position:"absolute",top:2,height:8,background:"#94a3b8",borderRadius:4,cursor:"grab",transition:"background 0.15s",minWidth:40}}
+          style={{position:"absolute",top:2,height:8,background:"#94a3b8",borderRadius:4,cursor:"grab",minWidth:40}}
           onMouseEnter={e=>e.currentTarget.style.background="#64748b"}
-          onMouseLeave={e=>e.currentTarget.style.background="#94a3b8"}
-        />
+          onMouseLeave={e=>e.currentTarget.style.background="#94a3b8"}/>
       </div>
     </div>
   );
