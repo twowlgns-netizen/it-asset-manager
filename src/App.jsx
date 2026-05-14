@@ -1940,7 +1940,7 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
 
   const save = () => {
     if(!form.loginid||!form.name) return alert("아이디와 이름을 입력하세요.");
-    const isAdd = !form.id;   // id가 없으면 신규, 있으면 수정
+    const isAdd = !form.id;
     if(isAdd && !form.password) return alert("비밀번호를 입력하세요.");
     setLoading(true);
     let formData = form;
@@ -1950,10 +1950,19 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
         return m ? parseInt(m[1]) : 0;
       }));
       formData = { ...form, usernum: `USR-${maxNum + 1}`, created_date: todayStr(), password_changed_date: todayStr() };
-    } else if(!isAdd && form.password && form.password !== users.find(u=>u.id===form.id)?.password) {
-      // 패스워드 변경 시 변경일 갱신
-      formData = { ...form, password_changed_date: todayStr() };
+    } else if(!isAdd) {
+      const orig = users.find(u=>u.id===form.id);
+      if (form.__pwChanged && form.password) {
+        // 비밀번호를 실제로 변경한 경우 → 변경일 갱신
+        formData = { ...form, password_changed_date: todayStr() };
+      } else {
+        // 비밀번호 미변경 → 기존 비밀번호 유지
+        formData = { ...form, password: orig?.password || form.password };
+      }
     }
+    // __pwChanged는 UI 전용 플래그 → DB 전송 전 제거
+    const { __pwChanged, ...cleanFormData } = formData;
+    formData = cleanFormData;
     // NOT NULL 컬럼 보장 (name, loginid)
     if(!formData.name)    formData = { ...formData, name:    users.find(u=>u.id===formData.id)?.name    || formData.name    || "" };
     if(!formData.loginid) formData = { ...formData, loginid: users.find(u=>u.id===formData.id)?.loginid || formData.loginid || "" };
@@ -2051,7 +2060,11 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
             ))}
             <label style={{display:"flex",flexDirection:"column",gap:4}}>
               <span style={{fontSize:12,color:"#64748b"}}>{modal==="edit"?"새 비밀번호 (변경 시만 입력)":"비밀번호"}</span>
-              <input type="password" value={form.password||""} onChange={e=>setForm({...form,password:e.target.value})} style={inp}/>
+              <input type="password"
+                value={modal==="edit" ? (form.__pwChanged ? form.password||"" : "") : (form.password||"")}
+                placeholder={modal==="edit" ? "••••••••••" : "비밀번호를 입력하세요"}
+                onChange={e=>setForm({...form, password:e.target.value, __pwChanged:true})}
+                style={inp}/>
             </label>
             <label style={{display:"flex",flexDirection:"column",gap:4}}>
               <span style={{fontSize:12,color:"#64748b"}}>지점</span>
