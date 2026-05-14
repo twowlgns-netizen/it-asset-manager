@@ -464,14 +464,14 @@ export default function App() {
         </div>
       )}
 
-      <div className="main-content-area" style={{ flex:1, overflowY:"hidden", overflowX:"hidden", minWidth:0, display:"flex", flexDirection:"column" }}>
+      <div className="main-content-area" style={{ flex:1, overflowY:"auto", overflowX:"hidden", minWidth:0, WebkitOverflowScrolling:"touch" }}>
         {isMobile && (
           <div style={{ background:"#fff", padding:"14px 18px", borderBottom:"1px solid #e2e8f0", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, zIndex:10 }}>
             <span onClick={()=>{ setView("dashboard"); window.location.reload(); }} style={{ fontWeight:800, color:"#0f6e56", fontSize:16, cursor:"pointer", userSelect:"none" }}>IT Asset Manager</span>
             <Btn onClick={handleLogout} style={{ fontSize:11, padding:"5px 10px" }}>로그아웃</Btn>
           </div>
         )}
-        <main style={{ padding:isMobile?"0 16px 16px":"0 32px 32px", paddingBottom:isMobile?80:40, boxSizing:"border-box", width:"100%", minWidth:0, flex:1, overflowY:"hidden", display:"flex", flexDirection:"column" }}>
+        <main style={{ padding:isMobile?"0 16px 16px":"0 32px 32px", paddingBottom:isMobile?80:40, boxSizing:"border-box", width:"100%", minWidth:0 }}>
           {/* 
             성능 최적화: 조건부 렌더링({view==="x" && ...}) 대신 display:none으로 숨김.
             메뉴 전환 시 이미 마운트된 컴포넌트는 state를 유지한 채 즉시 표시.
@@ -1143,7 +1143,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
   }, [visibleCols, selectedIds, isAllChecked, canEdit, pagedRows]);
 
   return (
-    <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0,height:"100%"}}>
+    <div>
       {/* ── 고정 툴바 영역: 스크롤해도 항상 상단에 표시 ── */}
       <div style={{position:"sticky",top:0,zIndex:30,background:"#f8fafc",
         padding:"20px 0 8px",marginBottom:6,
@@ -1708,8 +1708,8 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
   )});
 
   return (
-    <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0}}>
-     {/* ── 고정 툴바 영역 ── */}
+    <div>
+      {/* ── 고정 툴바 영역 ── */}
       <div style={{position:"sticky",top:0,zIndex:30,background:"#f8fafc",
         padding:"20px 0 8px",marginBottom:6,borderBottom:"1px solid #e2e8f0"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:12}}>
@@ -2029,8 +2029,8 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
   );
 
   return (
-    <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0}}>
-     <div style={{position:"sticky",top:0,zIndex:30,background:"#f8fafc",
+    <div>
+      <div style={{position:"sticky",top:0,zIndex:30,background:"#f8fafc",
         padding:"20px 0 8px",marginBottom:6,borderBottom:"1px solid #e2e8f0"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
           <h2 style={{margin:0,fontSize:20}}>사용자 계정 ({users.length}명)</h2>
@@ -2146,8 +2146,8 @@ function HistorySection({ history, historyCount, currentUser }) {
   const totalCount = historyCount > 0 ? historyCount : history.length;
 
   return (
-    <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0}}>
-     <div style={{position:"sticky",top:0,zIndex:30,background:"#f8fafc",
+    <div>
+      <div style={{position:"sticky",top:0,zIndex:30,background:"#f8fafc",
         padding:"20px 0 8px",marginBottom:6,borderBottom:"1px solid #e2e8f0"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
           <h2 style={{margin:0}}>활동 로그</h2>
@@ -2699,8 +2699,8 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
   };
 
   return (
-    <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0,overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
-     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
         <h2 style={{margin:0}}>휴지통 <span style={{fontSize:13,color:"#64748b",fontWeight:500}}>전체 {trash.length}건{filtered.length!==trash.length?` · 필터 ${filtered.length}건`:""}</span></h2>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
           <Btn onClick={refreshTrash} disabled={loading} style={{fontSize:12,padding:"7px 12px"}}>
@@ -3158,8 +3158,8 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
     const calc = () => {
       if(tableContainerRef.current) {
         const rect = tableContainerRef.current.getBoundingClientRect();
-        // 화면 하단까지 남은 공간 (하단 여백 없이 꽉 채움)
-        setMaxBodyH(Math.max(200, window.innerHeight - rect.top - 4));
+        // 화면 하단까지 남은 공간 - 스크롤바(12px) - 하단여백(8px)
+        setMaxBodyH(Math.max(200, window.innerHeight - rect.top - 12 - 8));
       } else {
         setMaxBodyH(window.innerHeight - 56 - 140 - 44 - 20);
       }
@@ -3283,7 +3283,7 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
 
   return (
     <div ref={tableContainerRef} style={{background:"#fff",borderRadius:14,border:"1px solid #eee",
-      display:"flex",flexDirection:"column",position:"relative",flex:1,minHeight:0}}>
+      display:"flex",flexDirection:"column",position:"relative"}}>
 
       {/*
         ★ 단일 스크롤 컨테이너 구조
@@ -3310,8 +3310,7 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
           overflowY: "auto",
           maxHeight: bodyH,
           borderRadius: "14px 14px 0 0",
-          // 세로 스크롤바는 표시 (데이터 스크롤)
-          // 가로 스크롤바는 커스텀 스크롤바로 대체
+          scrollbarWidth: "none",
         }}>
 
         {/* 헤더 — sticky로 wrapRef 안에서 세로 고정, 가로는 wrapRef가 자동 동기화 */}
