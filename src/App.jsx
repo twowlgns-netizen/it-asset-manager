@@ -54,6 +54,8 @@ const HW_FIELDS = [
   { key: "corporation",   label: "법인",              type: "text"     },
   { key: "location",      label: "위치(건물)",        type: "text"     },
   { key: "purchaseinfo",  label: "구매정보(전자결재)", type: "text"    },
+  { key: "registered_by", label: "등록자",             type: "readonly" },
+  { key: "registered_at", label: "등록일시",            type: "readonly" },
 ];
 const HW_FIELD_MAP = Object.fromEntries(HW_FIELDS.map(f => [f.key, f]));
 
@@ -64,10 +66,11 @@ const HW_SECTIONS = [
   { title: "⚙️ 사양",         keys: ["manufacturer","cpu","memory","hdd"] },
   { title: "🛒 구매 정보",     keys: ["receiptdate","purchasedate","purpose","purchaseinfo"] },
   { title: "📎 기타",          keys: ["notes"] },
+  { title: "🧾 등록 정보",       keys: ["registered_by","registered_at"] },
 ];
 
 const ALL_HW_COLS = HW_FIELDS.map(f => ({ key: f.key, label: f.label }));
-const DEFAULT_HW_COLS = new Set(["num","assetstatus","clinic","gccode","team","username","modelname","assettype","location"]);
+const DEFAULT_HW_COLS = new Set(["num","assetstatus","clinic","gccode","team","username","modelname","assettype","location","registered_by","registered_at"]);
 
 // ================================================================
 // 🛠️ 유틸리티
@@ -129,13 +132,14 @@ const HW_DB_COLS = new Set([
   "id","num","assetstatus","clinic","inspectiondate","gccode","imedcode",
   "serialnumber","ip","team","username","pcname","modelname","assettype",
   "notes","macaddress","receiptdate","purchasedate","manufacturer","cpu",
-  "memory","hdd","purpose","corporation","location","purchaseinfo","created_at"
+  "memory","hdd","purpose","corporation","location","purchaseinfo","created_at",
+  "registered_by","registered_at"
 ]);
 // software 테이블의 실제 DB 컬럼 목록
 const SW_DB_COLS = new Set([
   "id","name","category","version","vendor","licensetype","licensekey",
   "quantity","cost","purchasedate","expirydate","assignedto","clinic","status",
-  "notes","created_at"
+  "notes","created_at","registered_by","registered_at"
 ]);
 
 const sanitizeHW = (obj) => {
@@ -708,6 +712,14 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
       const maxNum = Math.max(0, ...data.map(h => parseInt(h.num||0)||0));
       formData = { ...form, num: maxNum + 1 };
     }
+    // 신규 등록 시 등록자·등록일시 자동 기록 (수정 시에는 기존값 유지)
+    if (isAdd) {
+      formData = {
+        ...formData,
+        registered_by: currentUser?.name || currentUser?.loginid || "알 수 없음",
+        registered_at: nowISO(),
+      };
+    }
     const before = isAdd ? "" : JSON.stringify(data.find(h=>h.id===formData.id)||{});
     const req = isAdd ? api.addHW(formData) : api.updateHW(formData.id, formData);
     req.then(()=>api.getHW()).then(list=>{
@@ -879,6 +891,9 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
         if(!item.assetstatus) item.assetstatus = "active";
         if(!item.assettype)   item.assettype   = "laptop";
         item.num = existingMaxNum + idx + 1;
+        // 파일 가져오기 시 등록자·등록일시 자동 기록
+        item.registered_by = currentUser?.name || currentUser?.loginid || "알 수 없음";
+        item.registered_at = nowISO();
         return item;
       });
       if(!items.length){alert("데이터 없음");return;}
@@ -935,6 +950,8 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
     corporation:   h=><span style={{fontSize:12}}>{h.corporation||"-"}</span>,
     location:      h=><span style={{fontSize:12}}>{h.location||"-"}</span>,
     purchaseinfo:  h=><span style={{fontSize:12}}>{h.purchaseinfo||"-"}</span>,
+    registered_by: h=><span style={{fontSize:12,color:"#0f6e56",fontWeight:600}}>{h.registered_by||"-"}</span>,
+    registered_at: h=><span style={{fontSize:12,color:"#64748b"}}>{h.registered_at?new Date(h.registered_at).toLocaleString("ko-KR",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}):"-"}</span>,
   };
 
   const allPageIds = pagedRows.map(h=>h.id);
@@ -1102,6 +1119,14 @@ function HWForm({ form, setForm, onSave, loading, isEdit }) {
                   <input type="number" value={form[key]||""} readOnly style={{...inp,background:"#f8fafc",color:"#94a3b8",cursor:"not-allowed"}}/>
                 </label>
               );
+              if(f.type==="readonly") return (
+                <label key={key} style={{display:"flex",flexDirection:"column",gap:3}}>
+                  <span style={{fontSize:11,color:"#64748b"}}>{f.label}</span>
+                  <div style={{...inp,background:"#f8fafc",color:key==="registered_by"?"#0f6e56":"#64748b",fontWeight:key==="registered_by"?600:400,cursor:"default",border:"1px solid #e2e8f0",lineHeight:"1.4"}}>
+                    {key==="registered_at"&&form[key]?new Date(form[key]).toLocaleString("ko-KR",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}):(form[key]||(!isEdit?"저장 시 자동 입력":"-"))}
+                  </div>
+                </label>
+              );
               if(f.type==="select") return (
                 <label key={key} style={{display:"flex",flexDirection:"column",gap:3}}>
                   <span style={{fontSize:11,color:"#64748b"}}>{f.label}</span>
@@ -1144,7 +1169,7 @@ function HWDetail({ item }) {
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
               {vis.map(key=>{
                 const f=HW_FIELD_MAP[key]; if(!f) return null;
-                const val=item[key]; const d=f.type==="select"?(f.options?.[val]||val):String(val);
+                const val=item[key]; const d=f.type==="select"?(f.options?.[val]||val):f.type==="readonly"&&key==="registered_at"&&val?new Date(val).toLocaleString("ko-KR",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}):String(val??"-");
                 return (
                   <div key={key} style={{padding:"8px 10px",background:"#f8fafc",borderRadius:8,gridColumn:f.type==="textarea"?"1 / -1":"auto"}}>
                     <div style={{fontSize:11,color:"#94a3b8",marginBottom:2}}>{f.label}</div>
@@ -1202,10 +1227,12 @@ const SW_FIELDS = [
   { key:"clinic",      label:"지점",           type:"select",  options:CLINICS },
   { key:"status",      label:"상태",           type:"select",  options:SW_STATUS },
   { key:"notes",       label:"비고",           type:"textarea" },
+  { key:"registered_by", label:"등록자",          type:"readonly" },
+  { key:"registered_at", label:"등록일시",         type:"readonly" },
 ];
 const SW_FIELD_MAP  = Object.fromEntries(SW_FIELDS.map(f=>[f.key,f]));
 const ALL_SW_COLS   = SW_FIELDS.map(f=>({key:f.key,label:f.label}));
-const DEFAULT_SW_COLS = new Set(["swnum","name","category","version","vendor","quantity","expirydate","assignedto","clinic","status"]);
+const DEFAULT_SW_COLS = new Set(["swnum","name","category","version","vendor","quantity","expirydate","assignedto","clinic","status","registered_by","registered_at"]);
 
 // localStorage 컬럼 설정 저장/불러오기
 const loadColPref = (key, def) => {
@@ -1293,7 +1320,12 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
     setLoading(true);
     const isAdd=modal==="add";
     const before=isAdd?"":JSON.stringify(data.find(s=>s.id===form.id)||{});
-    const formData = form;
+    // 신규 등록 시 등록자·등록일시 자동 기록 (수정 시에는 기존값 유지)
+    const formData = isAdd ? {
+      ...form,
+      registered_by: currentUser?.name || currentUser?.loginid || "알 수 없음",
+      registered_at: nowISO(),
+    } : form;
     const req=isAdd?api.addSW(formData):api.updateSW(formData.id,formData);
     req.then(()=>api.getSW()).then(list=>{
       setSw(Array.isArray(list)?list:[]);
@@ -1366,6 +1398,9 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
       const items=rawRows.filter(r=>Object.values(r).some(v=>v!=="")).map((row)=>{
         const item={status:"active"};
         SW_FIELDS.forEach(f=>{const val=row[f.label]!==undefined?row[f.label]:(row[f.key]!==undefined?row[f.key]:"");if(val!=="")item[f.key]=val;});
+        // 파일 가져오기 시 등록자·등록일시 자동 기록
+        item.registered_by = currentUser?.name || currentUser?.loginid || "알 수 없음";
+        item.registered_at = nowISO();
         return item;
       });
       if(!items.length){alert("데이터 없음");return;}
@@ -1448,6 +1483,8 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
     clinic:      s=>CLINICS[s.clinic]||s.clinic||"-",
     status:      s=>{const b=STATUS_BADGE[s.status]||{bg:"#f1f5f9",color:"#64748b"};return <span style={{background:b.bg,color:b.color,padding:"3px 8px",borderRadius:20,fontSize:11,fontWeight:700}}>{SW_STATUS[s.status]||s.status||"-"}</span>;},
     notes:       s=><span style={{fontSize:12,maxWidth:120,display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.notes||"-"}</span>,
+    registered_by: s=><span style={{fontSize:12,color:"#0f6e56",fontWeight:600}}>{s.registered_by||"-"}</span>,
+    registered_at: s=><span style={{fontSize:12,color:"#64748b"}}>{s.registered_at?new Date(s.registered_at).toLocaleString("ko-KR",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}):"-"}</span>,
   };
   const allPageSWIds = pagedRows.map(s=>s.id);
   const isAllSWChecked = allPageSWIds.length>0 && allPageSWIds.every(id=>selectedIds.has(id));
@@ -1573,7 +1610,7 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
       )}
       {(modal==="add"||modal==="edit")&&(
         <Modal title={modal==="add"?"소프트웨어 등록":"소프트웨어 수정"} onClose={()=>setModal(null)}>
-          <SWForm form={form} setForm={setForm} onSave={save} loading={loading}/>
+          <SWForm form={form} setForm={setForm} onSave={save} loading={loading} isAdd={modal==="add"}/>
         </Modal>
       )}
     </div>
@@ -1618,12 +1655,20 @@ function SWDetailView({ item, onEdit }) {
   );
 }
 
-function SWForm({ form, setForm, onSave, loading }) {
+function SWForm({ form, setForm, onSave, loading, isAdd }) {
   const inp={padding:"8px 10px",borderRadius:8,border:"1px solid #ddd",fontSize:13,width:"100%",boxSizing:"border-box"};
   return (
     <div style={{maxHeight:"62vh",overflowY:"auto",paddingRight:4}}>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
         {SW_FIELDS.map(f=>{
+          if(f.type==="readonly") return (
+            <label key={f.key} style={{display:"flex",flexDirection:"column",gap:3}}>
+              <span style={{fontSize:11,color:"#64748b"}}>{f.label}</span>
+              <div style={{...inp,background:"#f8fafc",color:f.key==="registered_by"?"#0f6e56":"#64748b",fontWeight:f.key==="registered_by"?600:400,cursor:"default",border:"1px solid #e2e8f0",lineHeight:"1.4"}}>
+                {f.key==="registered_at"&&form[f.key]?new Date(form[f.key]).toLocaleString("ko-KR",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}):(form[f.key]||(isAdd?"저장 시 자동 입력":"-"))}
+              </div>
+            </label>
+          );
           if(f.type==="select") return (
             <label key={f.key} style={{display:"flex",flexDirection:"column",gap:3}}>
               <span style={{fontSize:11,color:"#64748b"}}>{f.label}</span>
