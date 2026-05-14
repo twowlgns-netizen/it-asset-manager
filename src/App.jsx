@@ -133,7 +133,7 @@ const HW_DB_COLS = new Set([
 ]);
 // software 테이블의 실제 DB 컬럼 목록
 const SW_DB_COLS = new Set([
-  "id","swnum","name","category","version","vendor","licensetype","licensekey",
+  "id","name","category","version","vendor","licensetype","licensekey",
   "quantity","cost","purchasedate","expirydate","assignedto","clinic","status",
   "notes","created_at"
 ]);
@@ -1200,15 +1200,7 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
     setLoading(true);
     const isAdd=modal==="add";
     const before=isAdd?"":JSON.stringify(data.find(s=>s.id===form.id)||{});
-    // SW-N 번호 자동부여
-    let formData = form;
-    if (isAdd && !form.swnum) {
-      const maxNum = Math.max(0, ...data.map(s => {
-        const m = String(s.swnum||"").match(/(\d+)$/);
-        return m ? parseInt(m[1]) : 0;
-      }));
-      formData = { ...form, swnum: `SW-${maxNum + 1}` };
-    }
+    const formData = form;
     const req=isAdd?api.addSW(formData):api.updateSW(formData.id,formData);
     req.then(()=>api.getSW()).then(list=>{
       setSw(Array.isArray(list)?list:[]);
@@ -1278,14 +1270,9 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
         const buf=await file.arrayBuffer();const wb=XLSX.read(buf,{type:"array"});
         rawRows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
       }
-      const swMaxNum = Math.max(0, ...data.map(s => {
-        const m = String(s.swnum||"").match(/(\d+)$/);
-        return m ? parseInt(m[1]) : 0;
-      }));
-      const items=rawRows.filter(r=>Object.values(r).some(v=>v!=="")).map((row,idx)=>{
+      const items=rawRows.filter(r=>Object.values(r).some(v=>v!=="")).map((row)=>{
         const item={status:"active"};
         SW_FIELDS.forEach(f=>{const val=row[f.label]!==undefined?row[f.label]:(row[f.key]!==undefined?row[f.key]:"");if(val!=="")item[f.key]=val;});
-        if(!item.swnum) item.swnum = `SW-${swMaxNum + idx + 1}`;
         return item;
       });
       if(!items.length){alert("데이터 없음");return;}
@@ -1352,7 +1339,7 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
 
   // SW 컬럼 렌더러
   const SW_RENDERERS = {
-    swnum:       s=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{s.swnum||"-"}</span>,
+    swnum:       (s,ri)=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{`SW-${(ri??0)+1}`}</span>,
     name:        s=><b style={{fontSize:13}}>{s.name||"-"}</b>,
     category:    s=>SW_CATEGORIES[s.category]||s.category||"-",
     version:     s=>s.version||"-",
