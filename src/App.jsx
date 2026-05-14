@@ -230,21 +230,6 @@ const api = {
     return safeJson(res);
   },
   deleteTrash: (id) => fetch(`${BASE_URL}/trash?id=eq.${id}`, { method:"DELETE", headers:H }).then(safeJson),
-  // 다건 삭제 - 청크 단위로 분할하여 URL 길이 제한 및 RLS 문제 회피
-  deleteTrashBulk: async (ids) => {
-    if (!ids || ids.length === 0) return;
-    const CHUNK = 100; // 100건씩 나눠서 삭제
-    for (let i = 0; i < ids.length; i += CHUNK) {
-      const chunk = ids.slice(i, i + CHUNK);
-      const list  = chunk.join(",");
-      const res   = await fetch(`${BASE_URL}/trash?id=in.(${list})`, { method:"DELETE", headers:H });
-      // 204 No Content는 정상
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(`HTTP ${res.status}: ${txt}`);
-      }
-    }
-  },
 
   // ── 대시보드 전용: DB에서 직접 count 조회 (프론트 배열 의존 제거)
   getDashboardStats: async () => {
@@ -1095,7 +1080,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
 
   // 컬럼 렌더러
   const COL_RENDERERS = {
-    num:           h=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{h.num ? `HW-${h.num}` : "-"}</span>,
+    num:           (h,ri)=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{(ri??0)+1}</span>,
     assetstatus:   h=>{ const s=STATUS_BADGE[h.assetstatus]||{bg:"#f1f5f9",color:"#64748b"}; return <span style={{background:s.bg,color:s.color,padding:"3px 8px",borderRadius:20,fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{ASSET_STATUS[h.assetstatus]||h.assetstatus||"-"}</span>; },
     clinic:        h=><span style={{fontSize:12}}>{CLINICS[h.clinic]||h.clinic||"-"}</span>,
     inspectiondate:h=><span style={{fontSize:12}}>{h.inspectiondate||"-"}</span>,
@@ -1677,7 +1662,7 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
 
   // SW 컬럼 렌더러
   const SW_RENDERERS = {
-    swnum:       (s,ri)=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{`SW-${(ri??0)+1}`}</span>,
+    swnum:       (s,ri)=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{(ri??0)+1}</span>,
     name:        s=><b style={{fontSize:13}}>{s.name||"-"}</b>,
     category:    s=>SW_CATEGORIES[s.category]||s.category||"-",
     version:     s=>s.version||"-",
@@ -1944,7 +1929,7 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
       </div>
       <ResponsiveTable
         cols={[
-          { label:"번호",    minWidth:80,  sortVal:u=>u.usernum||"", render:u=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{u.usernum||"-"}</span> },
+          { label:"번호",    minWidth:60,  render:(_u,ri)=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{(ri??0)+1}</span> },
           { label:"아이디",  key:"loginid", minWidth:130 },
           { label:"이름",    key:"name",    minWidth:110 },
           { label:"부서",    key:"dept",    minWidth:130 },
@@ -2055,7 +2040,7 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
       </div>
       <ResponsiveTable
         cols={[
-          { label:"번호",       minWidth:80,  sortVal:u=>u.usernum||"", render:u=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{u.usernum||"-"}</span> },
+          { label:"번호",       minWidth:60,  render:(_u,ri)=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{(ri??0)+1}</span> },
           { label:"아이디",     key:"loginid", minWidth:130 },
           { label:"이름",       key:"name",    minWidth:110 },
           { label:"부서",       key:"dept",    minWidth:130 },
@@ -2244,12 +2229,8 @@ function HistorySection({ history, historyCount, currentUser }) {
       <ResponsiveTable
         cols={[
           { label:"번호", minWidth:60,
-            sortVal: h => { const pos=history.findIndex(x=>(x.id&&x.id===h.id)||(x.ts===h.ts&&x.username===h.username)); return pos>=0?totalCount-pos:0; },
-            render:(h)=>{
-              const posInHistory = history.findIndex(x=>(x.id&&x.id===h.id)||(x.ts===h.ts&&x.username===h.username));
-              const num = posInHistory >= 0 ? totalCount - posInHistory : "-";
-              return <span style={{color:"#64748b",fontSize:12}}>{num}</span>;
-          }},
+            render:(_h,ri)=><span style={{color:"#64748b",fontSize:12}}>{(ri??0)+1}</span>
+          },
           { label:"시간",    minWidth:155, sortVal:h=>h.ts||"",   render:h=><span style={{fontSize:11,whiteSpace:"nowrap",color:"#64748b"}}>{fDT(h.ts)}</span> },
           { label:"수행자",  minWidth:100, key:"username" },
           { label:"카테고리",minWidth:130, sortVal:h=>HISTORY_CATEGORIES[h.atype]||h.atype||"", render:h=>{
@@ -2636,13 +2617,12 @@ function QRScanSection({ hw, onClose, currentUser }) {
 // ================================================================
 function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, currentUser }) {
   const trashPageSizeKey = `trash_pagesize_${currentUser?.loginid||"default"}`;
-  const [search,      setSearch]      = useState("");
-  const [filterType,  setFilterType]  = useState("all");
-  const [loading,     setLoading]     = useState(false);
-  const [detailItem,  setDetailItem]  = useState(null);
-  const [selectedIds, setSelectedIds] = useState(new Set());
-  const [pageSize,    setPageSize]    = useState(()=>{ try{const s=localStorage.getItem(trashPageSizeKey);return s?Number(s):20;}catch{return 20;} });
-  const [currentPage, setCurrentPage] = useState(1);
+  const [search,     setSearch]     = useState("");
+  const [filterType, setFilterType] = useState("all");
+  const [loading,    setLoading]    = useState(false);
+  const [detailItem, setDetailItem] = useState(null);
+  const [pageSize,   setPageSize]   = useState(()=>{ try{const s=localStorage.getItem(trashPageSizeKey);return s?Number(s):20;}catch{return 20;} });
+  const [currentPage,setCurrentPage]= useState(1);
 
   const refreshTrash = useCallback(async () => {
     setLoading(true);
@@ -2654,9 +2634,6 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
   }, [setTrash]);
 
   useEffect(() => { refreshTrash(); }, [refreshTrash]);
-
-  // 필터 변경 시 선택 초기화
-  useEffect(() => { setSelectedIds(new Set()); setCurrentPage(1); }, [search, filterType, pageSize]);
 
   const DB_AUTO_COLS = ["id","created_at","updated_at","deleted_at"];
 
@@ -2678,19 +2655,9 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
     return matchType && matchSearch;
   });
 
-  const totalPages  = pageSize===0?1:Math.ceil(filtered.length/pageSize);
-  const pagedRows   = pageSize===0?filtered:filtered.slice((currentPage-1)*pageSize,currentPage*pageSize);
-
-  // 현재 페이지 전체 선택 여부
-  const allPageIds    = pagedRows.map(t => t.id);
-  const isAllChecked  = allPageIds.length > 0 && allPageIds.every(id => selectedIds.has(id));
-
-  const toggleAll = (e) => {
-    const n = new Set(selectedIds);
-    if (e.target.checked) allPageIds.forEach(id => n.add(id));
-    else                  allPageIds.forEach(id => n.delete(id));
-    setSelectedIds(n);
-  };
+  const totalPages = pageSize===0?1:Math.ceil(filtered.length/pageSize);
+  const pagedRows  = pageSize===0?filtered:filtered.slice((currentPage-1)*pageSize,currentPage*pageSize);
+  useEffect(()=>setCurrentPage(1),[search,filterType,pageSize]);
 
   const restore = (trashItem) => {
     const orig  = getData(trashItem);
@@ -2707,7 +2674,7 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
       .then(restored => {
         setTrash(prev => prev.filter(t => t.id !== trashItem.id));
         const item = Array.isArray(restored) ? restored[0] : restored;
-        if (table === "assets")        setHw(prev => [...prev, item]);
+        if (table === "assets")   setHw(prev => [...prev, item]);
         else if (table === "software") setSw(prev => [...prev, item]);
         addHistory("데이터 복구", aType, item?.id, name,
           `${typeLabel} 휴지통에서 복구`, "", JSON.stringify(rest));
@@ -2727,114 +2694,10 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
     }).catch(err => alert("영구삭제 오류: " + err.message));
   };
 
-  // ── 선택 영구삭제 (청크 배치: 100건씩 묶어서 삭제)
-  const deleteSelectedForever = async () => {
-    if (selectedIds.size === 0) return alert("삭제할 항목을 선택하세요.");
-    if (!window.confirm(`선택한 ${selectedIds.size}건을 영구 삭제하시겠습니까?\n복구할 수 없습니다.`)) return;
-    setLoading(true);
-    const ids = [...selectedIds];
-    // 로그용 메타 수집 (삭제 전)
-    const targets = ids.map(id => trash.find(t => t.id === id)).filter(Boolean);
-    try {
-      // 100건씩 청크로 나눠 순차 삭제 → URL 길이 제한·RLS 문제 회피
-      await api.deleteTrashBulk(ids);
-      // 상태 즉시 반영
-      const delSet = new Set(ids);
-      setTrash(prev => prev.filter(t => !delSet.has(t.id)));
-      // 로그 일괄 기록
-      targets.forEach(trashItem => {
-        const orig  = getData(trashItem);
-        const name  = orig.gccode || orig.modelname || orig.name || "항목";
-        const table = getTable(trashItem);
-        const aType = table === "assets" ? "hardware" : "software";
-        addHistory("영구 삭제", aType, trashItem.id, name,
-          "휴지통에서 영구 삭제 (선택삭제)", JSON.stringify(orig), "");
-      });
-      setSelectedIds(new Set());
-      alert(`${ids.length}건이 영구 삭제됐습니다.`);
-    } catch(err) {
-      // 에러 발생 시 실제 서버 응답 메시지 포함해서 표시
-      alert("삭제 오류: " + (err.message || String(err)));
-    } finally {
-      setLoading(false);
-      await refreshTrash();
-    }
-  };
-
-  // ── 선택 복구 (동시 실행 5개 제한 → Supabase rate limit 회피)
-  const restoreSelected = async () => {
-    if (selectedIds.size === 0) return alert("복구할 항목을 선택하세요.");
-    if (!window.confirm(`선택한 ${selectedIds.size}건을 복구하시겠습니까?`)) return;
-    setLoading(true);
-
-    const targets = [...selectedIds]
-      .map(id => trash.find(t => t.id === id))
-      .filter(Boolean);
-
-    const CONCURRENCY = 5; // 동시에 최대 5개만 실행
-    let ok = 0, fail = 0;
-    const failedNames = [];
-
-    // concurrency-limited pool 실행
-    const queue = [...targets];
-    const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
-      while (queue.length > 0) {
-        const trashItem = queue.shift();
-        if (!trashItem) continue;
-        const orig  = getData(trashItem);
-        const table = getTable(trashItem);
-        const rest  = Object.fromEntries(
-          Object.entries(orig).filter(([k]) => !DB_AUTO_COLS.includes(k))
-        );
-        const name  = rest.gccode || rest.modelname || rest.name || "항목";
-        const aType = table === "assets" ? "hardware" : "software";
-        try {
-          // ① 휴지통에서 삭제
-          const delRes = await fetch(`${BASE_URL}/trash?id=eq.${trashItem.id}`,
-            { method:"DELETE", headers:H });
-          if (!delRes.ok) throw new Error(`휴지통 삭제 실패 HTTP ${delRes.status}`);
-
-          // ② 원본 테이블에 복구
-          const addRes = await fetch(`${BASE_URL}/${table}`,
-            { method:"POST", headers:{...H,"Prefer":"return=representation"}, body: JSON.stringify(rest) });
-          if (!addRes.ok) throw new Error(`복구 INSERT 실패 HTTP ${addRes.status}`);
-          const json = await addRes.json().catch(() => []);
-          const item = Array.isArray(json) ? json[0] : json;
-
-          // ③ 상태 반영
-          setTrash(prev => prev.filter(t => t.id !== trashItem.id));
-          if (table === "assets")        setHw(prev => [...prev, item]);
-          else if (table === "software") setSw(prev => [...prev, item]);
-          addHistory("데이터 복구", aType, item?.id, name,
-            "휴지통에서 복구 (선택복구)", "", JSON.stringify(rest));
-          ok++;
-        } catch(e) {
-          fail++;
-          failedNames.push(name);
-          console.error("[restoreSelected] 복구 실패:", name, e.message);
-        }
-      }
-    });
-
-    await Promise.all(workers);
-
-    setSelectedIds(new Set());
-    setLoading(false);
-    await refreshTrash();
-
-    if (fail > 0) {
-      alert(`완료: ${ok}건 복구 성공, ${fail}건 실패\n실패 항목: ${failedNames.slice(0,5).join(", ")}${failedNames.length>5?` 외 ${failedNames.length-5}건`:""}`);
-    } else {
-      alert(`${ok}건이 복구됐습니다.`);
-    }
-  };
-
   return (
     <div>
-      {/* ── 헤더 영역 */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
-        <h2 style={{margin:0}}>휴지통 <span style={{fontSize:13,color:"#64748b",fontWeight:500}}>전체 {trash.length}건{filtered.length!==trash.length?` · 필터 ${filtered.length}건`:""}
-          {selectedIds.size>0&&<span style={{color:"#dc2626",fontWeight:700}}> · 선택 {selectedIds.size}건</span>}</span></h2>
+        <h2 style={{margin:0}}>휴지통 <span style={{fontSize:13,color:"#64748b",fontWeight:500}}>전체 {trash.length}건{filtered.length!==trash.length?` · 필터 ${filtered.length}건`:""}</span></h2>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
           <Btn onClick={refreshTrash} disabled={loading} style={{fontSize:12,padding:"7px 12px"}}>
             {loading ? "조회 중..." : "🔄 새로고침"}
@@ -2855,29 +2718,7 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
         </div>
       </div>
 
-      {/* ── 선택 작업 버튼 바 */}
-      {canEdit && selectedIds.size > 0 && (
-        <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:10,
-          background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:10,padding:"8px 14px",flexWrap:"wrap"}}>
-          <span style={{fontSize:13,fontWeight:600,color:"#c2410c"}}>
-            ✔ {selectedIds.size}건 선택됨
-          </span>
-          <Btn onClick={restoreSelected} variant="warning"
-            disabled={loading} style={{fontSize:12,padding:"6px 12px",whiteSpace:"nowrap"}}>
-            🔄 선택 복구 ({selectedIds.size})
-          </Btn>
-          <Btn onClick={deleteSelectedForever} variant="danger"
-            disabled={loading} style={{fontSize:12,padding:"6px 12px",whiteSpace:"nowrap"}}>
-            🗑️ 선택 영구삭제 ({selectedIds.size})
-          </Btn>
-          <Btn onClick={()=>setSelectedIds(new Set())}
-            style={{fontSize:12,padding:"6px 10px",background:"#f1f5f9",color:"#64748b",whiteSpace:"nowrap"}}>
-            ✕ 선택 해제
-          </Btn>
-        </div>
-      )}
-
-      {/* ── 페이지당 + 페이지네이션 */}
+      {/* 페이지당 개수 + 페이지네이션 */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
         <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"#64748b"}}>
           <span>페이지당</span>
@@ -2904,25 +2745,9 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
 
       <ResponsiveTable
         cols={[
-          // ── 체크박스 컬럼
-          {
-            label: () => (
-              <input type="checkbox" checked={isAllChecked}
-                onChange={toggleAll}
-                style={{accentColor:"#0f6e56",width:15,height:15,cursor:"pointer",display:"block",margin:"0 auto"}} />
-            ),
-            minWidth:46, noClip:true,
-            render: t => (
-              <input type="checkbox" checked={selectedIds.has(t.id)}
-                onChange={e=>{ const n=new Set(selectedIds); e.target.checked?n.add(t.id):n.delete(t.id); setSelectedIds(n); }}
-                onClick={e=>e.stopPropagation()}
-                style={{accentColor:"#0f6e56",width:15,height:15,cursor:"pointer",display:"block",margin:"0 auto"}} />
-            )
-          },
-          { label:"번호",      minWidth:75,
-            sortVal: t => filtered.length - filtered.indexOf(t),
-            render:(t)=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{`TRS-${filtered.length - filtered.indexOf(t)}`}</span>},
-          { label:"구분",      minWidth:110,
+          { label:"번호",     minWidth:60,
+            render:(_t,ri)=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{(ri??0)+1}</span>},
+          { label:"구분",     minWidth:110,
             sortVal: t => getTable(t),
             render:t=>{ const tb=getTable(t); return <span style={{background:tb==="assets"?"#eff6ff":"#f0fdf4",color:tb==="assets"?"#2563eb":"#0f6e56",padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700}}>{tb==="assets"?"🖥️ 장비":"💿 소프트웨어"}</span>; }},
           { label:"이름/코드", minWidth:180,
@@ -2931,26 +2756,26 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
           { label:"모델/버전", minWidth:140,
             sortVal: t=>{ const d=getData(t); return d.modelname||d.version||""; },
             render:t=>{ const d=getData(t); return d.modelname||d.version||"-"; }},
-          { label:"팀/담당",   minWidth:130,
+          { label:"팀/담당",  minWidth:130,
             sortVal: t=>{ const d=getData(t); return d.team||d.assignedto||""; },
             render:t=>{ const d=getData(t); return d.team||d.assignedto||"-"; }},
-          { label:"사용자",    minWidth:110,
+          { label:"사용자",   minWidth:110,
             sortVal: t=>{ const d=getData(t); return d.username||""; },
             render:t=>{ const d=getData(t); return d.username||"-"; }},
-          { label:"지점",      minWidth:120,
+          { label:"지점",     minWidth:120,
             sortVal: t=>{ const d=getData(t); return CLINICS[d.clinic]||d.clinic||""; },
             render:t=>{ const d=getData(t); return CLINICS[d.clinic]||d.clinic||"-"; }},
-          { label:"상태",      minWidth:110,
+          { label:"상태",     minWidth:110,
             sortVal: t=>{ const d=getData(t); const sk=d.assetstatus||d.status; return ASSET_STATUS[sk]||SW_STATUS[sk]||sk||""; },
             render:t=>{ const d=getData(t); const sk=d.assetstatus||d.status; const b=STATUS_BADGE[sk]||{bg:"#f1f5f9",color:"#64748b"}; return sk?<span style={{background:b.bg,color:b.color,padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700}}>{ASSET_STATUS[sk]||SW_STATUS[sk]||sk}</span>:"-"; }},
-          { label:"삭제일",    minWidth:155,
+          { label:"삭제일",   minWidth:155,
             sortVal: t => t.deletedat||t.deletedAt||t.created_at||"",
             render:t=>fDT(t.deletedat||t.deletedAt||t.created_at) },
-          { label:"관리",      minWidth:260, noClip:true, render:t=>(
+          { label:"관리",     minWidth:260, noClip:true, render:t=>(
             <div style={{display:"flex",gap:5,flexWrap:"nowrap",alignItems:"center"}}>
               <Btn onClick={()=>setDetailItem(t)} style={{fontSize:11,padding:"5px 8px",whiteSpace:"nowrap"}}>🔍 상세</Btn>
-              {canEdit && <Btn onClick={()=>restore(t)}        variant="warning" style={{fontSize:11,padding:"5px 8px",whiteSpace:"nowrap"}}>🔄 복구</Btn>}
-              {canEdit && <Btn onClick={()=>deleteForever(t)}  variant="danger"  style={{fontSize:11,padding:"5px 8px",whiteSpace:"nowrap"}}>🗑️ 영구삭제</Btn>}
+              {canEdit && <Btn onClick={()=>restore(t)} variant="warning" style={{fontSize:11,padding:"5px 8px",whiteSpace:"nowrap"}}>🔄 복구</Btn>}
+              {canEdit && <Btn onClick={()=>deleteForever(t)} variant="danger" style={{fontSize:11,padding:"5px 8px",whiteSpace:"nowrap"}}>🗑️ 영구삭제</Btn>}
             </div>
           )},
         ]}
@@ -3498,21 +3323,13 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
                     <th key={i}
                       onClick={()=>handleColHeaderClick(i)}
                       onContextMenu={(e)=>handleColHeaderRightClick(e,i)}
-                      style={{padding:i===0?"0":"12px 12px",textAlign:i===0?"center":"left",
-                        verticalAlign:"middle",
+                      style={{padding:i===0?"10px 4px":"12px 12px",textAlign:i===0?"center":"left",
                         fontSize:11,color:"#475569",borderBottom:"2px solid #e2e8f0",
                         borderRight:"1px solid #e8eef4",whiteSpace:"nowrap",fontWeight:700,
                         position:"relative",userSelect:"none",overflow:"visible",
                         boxSizing:"border-box",cursor:isSortable?"pointer":"default"}}>
-                      <span style={{
-                        display:"flex", alignItems:"center", justifyContent: i===0?"center":"flex-start",
-                        gap:2, overflow:"hidden", paddingRight:i===0?0:8,
-                        height:"100%"
-                      }}>
-                        {typeof c.label==="function"
-                          ? <span style={{display:"flex",alignItems:"center",justifyContent:"center",width:"100%"}}>{c.label()}</span>
-                          : <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{c.label}</span>
-                        }
+                      <span style={{display:"flex",alignItems:"center",gap:2,overflow:"hidden",paddingRight:i===0?0:8}}>
+                        <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{typeof c.label==="function"?c.label():c.label}</span>
                         {isSortable && sortIndicator(i)}
                       </span>
                       <ResizeHandle onResize={d=>handleResize(i,d)} onDoubleClick={()=>autoFitCol(i)}/>
@@ -3546,18 +3363,12 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
                           onMouseEnter={e=>{ if(!isSel) e.currentTarget.style.background="#eff6ff"; }}
                           onMouseLeave={e=>{ e.currentTarget.style.background=rowBg(ri,isSel); }}>
                           {cols.map((c,ci)=>(
-                            <td key={ci} style={{
-                              padding: ci===0 ? "0" : "11px 12px",
-                              fontSize:13,
-                              textAlign: ci===0 ? "center" : "left",
-                              verticalAlign: "middle",
-                              height:VIRT_ROW_H,
+                            <td key={ci} style={{padding:ci===0?"9px 4px":"11px 12px",fontSize:13,
+                              textAlign:ci===0?"center":"left",height:VIRT_ROW_H,
                               overflow:c.noClip?"visible":"hidden",
                               textOverflow:c.noClip?"unset":"ellipsis",
                               whiteSpace:c.noClip?"normal":"nowrap",
-                              borderRight:"1px solid #f0f4f8",
-                              boxSizing:"border-box"
-                            }}>
+                              borderRight:"1px solid #f0f4f8",boxSizing:"border-box"}}>
                               {c.render?c.render(row,ri,sortedRows):row[c.key]}
                             </td>
                           ))}
