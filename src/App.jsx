@@ -11,7 +11,7 @@ const H = { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "
 // ⚙️ 상수
 // ================================================================
 const CLINICS = { all: "전체", gangnam: "강남의원", gangbuk: "강북의원", seoulsup: "서울숲의원" };
-const ASSET_STATUS  = { active: "사용중", inactive: "미사용", repair: "수리중", disposed: "폐기", dispose_target: "폐기대상" };
+const ASSET_STATUS  = { active: "사용중", inactive: "미사용", repair: "수리중", storage: "보관중", dispose_target: "폐기대상", disposed: "폐기" };
 const ASSET_TYPES   = { laptop: "노트북", desktop: "데스크탑", monitor: "모니터", tablet: "태블릿", phone: "스마트폰", etc: "기타" };
 const SW_STATUS     = { active: "사용중", expired: "만료", inactive: "미사용", disposed: "폐기" };
 const SW_CATEGORIES = { os: "운영체제", office: "오피스", security: "보안", erp: "ERP", design: "디자인", dev: "개발", etc: "기타" };
@@ -20,6 +20,7 @@ const STATUS_BADGE  = {
   active:         { bg: "#e8f5e9", color: "#0f6e56" },
   inactive:       { bg: "#f1f5f9", color: "#64748b" },
   repair:         { bg: "#fff7ed", color: "#c2410c" },
+  storage:        { bg: "#eff6ff", color: "#2563eb" },
   disposed:       { bg: "#fff1f0", color: "#cf1322" },
   dispose_target: { bg: "#fef3c7", color: "#d97706" },
   expired:        { bg: "#fff1f0", color: "#cf1322" },
@@ -233,7 +234,7 @@ const api = {
   // ── 대시보드 전용: DB에서 직접 count 조회 (프론트 배열 의존 제거)
   getDashboardStats: async () => {
     const [
-      hwTotal, hwActive, hwInactive, hwRepair, hwDisposed, hwDisposeTarget,
+      hwTotal, hwActive, hwInactive, hwRepair, hwStorage, hwDisposed, hwDisposeTarget,
       swTotal,
       trashTotal, trashHW, trashSW,
       gangnam, gangbuk, seoulsup,
@@ -242,6 +243,7 @@ const api = {
       fetchCount("assets", "&assetstatus=eq.active"),
       fetchCount("assets", "&assetstatus=eq.inactive"),
       fetchCount("assets", "&assetstatus=eq.repair"),
+      fetchCount("assets", "&assetstatus=eq.storage"),
       fetchCount("assets", "&assetstatus=eq.disposed"),
       fetchCount("assets", "&assetstatus=eq.dispose_target"),
       fetchCount("software"),
@@ -252,11 +254,17 @@ const api = {
       fetchCount("assets", "&clinic=eq.gangbuk"),
       fetchCount("assets", "&clinic=eq.seoulsup"),
     ]);
+    // 미분류: 알려진 상태값에 해당하지 않는 건수
+    const hwKnown = hwActive + hwInactive + hwRepair + hwStorage + hwDisposed + hwDisposeTarget;
+    const hwUnclassified = Math.max(0, hwTotal - hwKnown);
+    // 미분류 지점: gangnam/gangbuk/seoulsup 외 나머지
+    const clinicKnown = gangnam + gangbuk + seoulsup;
+    const clinicUnclassified = Math.max(0, hwTotal - clinicKnown);
     return {
-      hw: { total:hwTotal, active:hwActive, inactive:hwInactive, repair:hwRepair, disposed:hwDisposed, dispose_target:hwDisposeTarget },
+      hw: { total:hwTotal, active:hwActive, inactive:hwInactive, repair:hwRepair, storage:hwStorage, disposed:hwDisposed, dispose_target:hwDisposeTarget, unclassified:hwUnclassified },
       sw: { total:swTotal },
       trash: { total:trashTotal, hw:trashHW, sw:trashSW },
-      clinics: { gangnam, gangbuk, seoulsup },
+      clinics: { gangnam, gangbuk, seoulsup, unclassified:clinicUnclassified },
     };
   },
 };
@@ -496,7 +504,7 @@ export default function App() {
 // ================================================================
 // 📊 [대시보드]
 // ================================================================
-function DashboardSection({ hw, sw, history, historyCount, trash, isMobile, dashStats }) {
+function DashboardSection({ hw, sw, history, historyCount, trash, isMobile, dashStats, onHwClinic }) {
   const [clinicFilter, setClinicFilter] = useState("all");
 
   // ── 통계값: dashStats(DB 직접 집계) 우선, 없으면 배열 계산(폴백)
@@ -505,114 +513,191 @@ function DashboardSection({ hw, sw, history, historyCount, trash, isMobile, dash
     active:         hw.filter(h=>h.assetstatus==="active").length,
     inactive:       hw.filter(h=>h.assetstatus==="inactive").length,
     repair:         hw.filter(h=>h.assetstatus==="repair").length,
+    storage:        hw.filter(h=>h.assetstatus==="storage").length,
     disposed:       hw.filter(h=>h.assetstatus==="disposed").length,
     dispose_target: hw.filter(h=>h.assetstatus==="dispose_target").length,
+    unclassified:   0,
   };
   const swTotal    = dashStats ? dashStats.sw.total    : sw.length;
   const trashCount = dashStats ? dashStats.trash.total : (Array.isArray(trash) ? trash.length : 0);
   const trashHW    = dashStats ? dashStats.trash.hw    : (Array.isArray(trash) ? trash.filter(t=>(t.table_name||"assets")==="assets").length : 0);
   const trashSW    = dashStats ? dashStats.trash.sw    : (Array.isArray(trash) ? trash.filter(t=>t.table_name==="software").length : 0);
 
-  // 지점별 카운트: dashStats 있으면 DB 집계, 없으면 배열 계산
-  const clinicCounts = Object.entries(CLINICS).filter(([k])=>k!=="all").map(([k,v])=>({
-    key:k, name:v,
-    count: dashStats ? (dashStats.clinics[k] ?? 0) : hw.filter(h=>h.clinic===k).length,
-  }));
+  // 지점별 카운트 (미분류 포함)
+  const clinicCounts = [
+    { key:"gangnam",  name:"강남의원",   count: dashStats ? (dashStats.clinics.gangnam??0)  : hw.filter(h=>h.clinic==="gangnam").length,  color:"#0f6e56", icon:"🏥" },
+    { key:"gangbuk",  name:"강북의원",   count: dashStats ? (dashStats.clinics.gangbuk??0)  : hw.filter(h=>h.clinic==="gangbuk").length,  color:"#2563eb", icon:"🏥" },
+    { key:"seoulsup", name:"서울숲의원", count: dashStats ? (dashStats.clinics.seoulsup??0) : hw.filter(h=>h.clinic==="seoulsup").length, color:"#7c3aed", icon:"🏥" },
+    { key:"__unclassified__", name:"미분류/기타", count: dashStats ? (dashStats.clinics.unclassified??0) : hw.filter(h=>!["gangnam","gangbuk","seoulsup"].includes(h.clinic)).length, color:"#94a3b8", icon:"❓" },
+  ];
 
-  // clinicFilter가 적용된 상태별 카운트 (필터 선택 시 배열 기반 재계산 — DB 재조회 없이 즉시 반영)
-  const filtered = clinicFilter === "all" ? hw : hw.filter(h => h.clinic === clinicFilter);
-  const filteredStats = clinicFilter === "all" ? hwStats : {
+  // clinicFilter 선택 시 배열 기반 재계산
+  const filtered = clinicFilter === "all" ? hw : (clinicFilter === "__unclassified__" ? hw.filter(h=>!["gangnam","gangbuk","seoulsup"].includes(h.clinic)) : hw.filter(h=>h.clinic===clinicFilter));
+  const fStats = clinicFilter === "all" ? hwStats : {
     total:          filtered.length,
     active:         filtered.filter(h=>h.assetstatus==="active").length,
     inactive:       filtered.filter(h=>h.assetstatus==="inactive").length,
     repair:         filtered.filter(h=>h.assetstatus==="repair").length,
+    storage:        filtered.filter(h=>h.assetstatus==="storage").length,
     disposed:       filtered.filter(h=>h.assetstatus==="disposed").length,
     dispose_target: filtered.filter(h=>h.assetstatus==="dispose_target").length,
+    unclassified:   filtered.filter(h=>!Object.keys(ASSET_STATUS).includes(h.assetstatus)).length,
   };
 
-  const statusCards = [
-    { label:"전체 장비",  statusKey:null,            value:filteredStats.total,          textColor:"#0f6e56" },
-    { label:"사용중",     statusKey:"active",         value:filteredStats.active,          textColor:"#2563eb" },
-    { label:"미사용",     statusKey:"inactive",       value:filteredStats.inactive,        textColor:"#64748b" },
-    { label:"수리중",     statusKey:"repair",         value:filteredStats.repair,          textColor:"#c2410c" },
-    { label:"폐기",       statusKey:"disposed",       value:filteredStats.disposed,        textColor:"#cf1322" },
-    { label:"폐기대상",   statusKey:"dispose_target", value:filteredStats.dispose_target,  textColor:"#d97706" },
-    { label:"소프트웨어", statusKey:null,             value:swTotal,                       textColor:"#7c3aed" },
-    { label:"활동 로그",  statusKey:null,             value:historyCount>0?historyCount:history.length, textColor:"#0891b2" },
-    { label:"휴지통",     statusKey:null,             value:trashCount,                    textColor:"#94a3b8", sub:`장비 ${trashHW} · SW ${trashSW}` },
-  ];
-
-  // dashStats 로딩 중 표시
   const isLoading = !dashStats && hw.length === 0;
 
+  // 상태별 카드 정의
+  const hwStatusCards = [
+    { label:"전체 장비",  key:"total",          value:fStats.total,          color:"#0f6e56", bg:"#e8f5e9", icon:"🖥️" },
+    { label:"사용중",     key:"active",          value:fStats.active,         color:"#2563eb", bg:"#eff6ff", icon:"✅" },
+    { label:"미사용",     key:"inactive",        value:fStats.inactive,       color:"#64748b", bg:"#f1f5f9", icon:"⏸️" },
+    { label:"수리중",     key:"repair",          value:fStats.repair,         color:"#c2410c", bg:"#fff7ed", icon:"🔧" },
+    { label:"보관중",     key:"storage",         value:fStats.storage,        color:"#0891b2", bg:"#ecfeff", icon:"📦" },
+    { label:"폐기대상",   key:"dispose_target",  value:fStats.dispose_target, color:"#d97706", bg:"#fef3c7", icon:"⚠️" },
+    { label:"폐기",       key:"disposed",        value:fStats.disposed,       color:"#cf1322", bg:"#fff1f0", icon:"🗑️" },
+    { label:"미분류",     key:"unclassified",    value:fStats.unclassified ?? (clinicFilter==="all" ? (hwStats.unclassified??0) : filtered.filter(h=>!Object.keys(ASSET_STATUS).includes(h.assetstatus)).length), color:"#94a3b8", bg:"#f8fafc", icon:"❓" },
+  ];
+
   return (
-    <div>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:8 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-          <h2 style={{ fontSize:22, fontWeight:700, margin:0 }}>실시간 현황</h2>
-          {/* DB 직접 집계 여부 표시 */}
-          <span style={{ fontSize:11, padding:"3px 8px", borderRadius:10,
+    <div style={{display:"flex", flexDirection:"column", gap:20}}>
+
+      {/* ── 헤더 */}
+      <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8}}>
+        <div style={{display:"flex", alignItems:"center", gap:10}}>
+          <h2 style={{fontSize:20, fontWeight:800, margin:0, color:"#0f172a"}}>실시간 현황</h2>
+          <span style={{fontSize:11, padding:"3px 10px", borderRadius:20, fontWeight:700,
             background: dashStats ? "#e8f5e9" : "#fef3c7",
-            color:      dashStats ? "#0f6e56" : "#d97706",
-            fontWeight: 600 }}>
-            {dashStats ? "✅ DB 정확값" : "⏳ 로딩 중..."}
+            color:      dashStats ? "#0f6e56" : "#d97706"}}>
+            {isLoading ? "⏳ 로딩 중..." : dashStats ? "✅ DB 정확값" : "📋 로컬 데이터"}
           </span>
         </div>
         <select value={clinicFilter} onChange={e=>setClinicFilter(e.target.value)}
-          style={{ padding:"8px 12px", borderRadius:10, border:"1px solid #ddd", fontSize:13 }}>
-          {Object.entries(CLINICS).map(([k,v])=><option key={k} value={k}>{v}</option>)}
+          style={{padding:"8px 14px", borderRadius:10, border:"1px solid #e2e8f0", fontSize:13, background:"#fff", color:"#334155", fontWeight:600, cursor:"pointer"}}>
+          <option value="all">전체 지점</option>
+          {clinicCounts.map(c=><option key={c.key} value={c.key}>{c.name}</option>)}
         </select>
       </div>
 
-      {/* 지점별 카운트 */}
-      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"repeat(3,1fr)", gap:12, marginBottom:20 }}>
-        {clinicCounts.map(c => (
-          <div key={c.key} onClick={()=>{ setClinicFilter(c.key); if(onHwClinic) onHwClinic(c.key); }}
-            style={{ background: clinicFilter===c.key?"#e8f5e9":"#fff", padding:"16px 20px", borderRadius:16, border:`1.5px solid ${clinicFilter===c.key?"#0f6e56":"#e2e8f0"}`, cursor:"pointer" }}>
-            <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>🏥 {c.name}</div>
-            <div style={{ fontSize:28, fontWeight:800, color:"#0f6e56" }}>{c.count}</div>
-            <div style={{ fontSize:11, color:"#94a3b8" }}>등록 장비</div>
-          </div>
-        ))}
-      </div>
-
-      {/* 상태별 요약 */}
-      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":`repeat(4,1fr)`, gap:12, marginBottom:16 }}>
-        {statusCards.map(c => {
-          const badge = c.statusKey ? STATUS_BADGE[c.statusKey] : null;
-          return (
-            <div key={c.label} style={{ background:"#fff", padding:"14px 16px", borderRadius:16, border:"1px solid #e2e8f0", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-              <div>
-                <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>{c.label}</div>
-                <div style={{ fontSize:24, fontWeight:800, color:c.textColor }}>{c.value}</div>
-                {c.sub && <div style={{ fontSize:10, color:"#94a3b8", marginTop:2 }}>{c.sub}</div>}
+      {/* ── 섹션1: 지점별 장비 현황 */}
+      <div>
+        <div style={{fontSize:12, fontWeight:700, color:"#64748b", marginBottom:10, display:"flex", alignItems:"center", gap:6}}>
+          <span style={{width:3, height:14, background:"#0f6e56", borderRadius:2, display:"inline-block"}}/>
+          지점별 장비 현황
+        </div>
+        <div style={{display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"repeat(4,1fr)", gap:10}}>
+          {clinicCounts.map(c => (
+            <div key={c.key}
+              onClick={()=>setClinicFilter(clinicFilter===c.key?"all":c.key)}
+              style={{
+                background: clinicFilter===c.key ? c.color : "#fff",
+                padding:"16px 18px", borderRadius:14,
+                border:`1.5px solid ${clinicFilter===c.key ? c.color : "#e2e8f0"}`,
+                cursor:"pointer", transition:"all 0.15s",
+                boxShadow: clinicFilter===c.key ? `0 4px 16px ${c.color}30` : "none",
+              }}>
+              <div style={{fontSize:11, color: clinicFilter===c.key?"rgba(255,255,255,0.8)":"#94a3b8", marginBottom:6, fontWeight:600}}>
+                {c.icon} {c.name}
               </div>
-              {badge && (
-                <span style={{ background:badge.bg, color:badge.color, padding:"3px 10px", borderRadius:20, fontSize:11, fontWeight:700 }}>
-                  {ASSET_STATUS[c.statusKey]}
-                </span>
-              )}
+              <div style={{fontSize:30, fontWeight:900, color: clinicFilter===c.key?"#fff":c.color, lineHeight:1}}>
+                {isLoading ? "-" : c.count.toLocaleString()}
+              </div>
+              <div style={{fontSize:11, color: clinicFilter===c.key?"rgba(255,255,255,0.7)":"#94a3b8", marginTop:4}}>
+                {c.key==="__unclassified__" ? "미분류 장비" : "등록 장비"}
+              </div>
             </div>
-          );
-        })}
+          ))}
+        </div>
       </div>
 
-      {/* 최근 활동 */}
-      <h3 style={{ fontSize:14, fontWeight:700, marginBottom:10 }}>최근 활동 로그</h3>
-      <div style={{ background:"#fff", borderRadius:14, border:"1px solid #eee", overflow:"hidden" }}>
-        {history.slice(0,10).length===0
-          ? <div style={{ padding:30, textAlign:"center", color:"#94a3b8" }}>활동 기록이 없습니다.</div>
-          : history.slice(0,10).map((h,i) => (
-            <div key={i} style={{ padding:"11px 16px", borderBottom:"1px solid #f8fafc", display:"flex", gap:12, alignItems:"center", flexWrap:"wrap" }}>
-              <span style={{ fontSize:11, color:"#94a3b8", flexShrink:0 }}>{fDT(h.ts)}</span>
-              <span style={{ fontSize:12 }}><b style={{color:"#0f6e56"}}>{h.username}</b></span>
-              <span style={{ fontSize:12, background:"#f1f5f9", padding:"2px 8px", borderRadius:10 }}>{h.action}</span>
-              <span style={{ fontSize:12, color:"#334155" }}>{h.aname}</span>
-              {h.detail && <span style={{ fontSize:11, color:"#94a3b8" }}>{h.detail}</span>}
+      {/* ── 섹션2: 장비 상태별 현황 */}
+      <div>
+        <div style={{fontSize:12, fontWeight:700, color:"#64748b", marginBottom:10, display:"flex", alignItems:"center", gap:6}}>
+          <span style={{width:3, height:14, background:"#2563eb", borderRadius:2, display:"inline-block"}}/>
+          장비 상태별 현황
+          {clinicFilter !== "all" && (
+            <span style={{fontSize:11, color:"#0f6e56", background:"#e8f5e9", padding:"2px 8px", borderRadius:10, fontWeight:600}}>
+              {clinicCounts.find(c=>c.key===clinicFilter)?.name || clinicFilter} 필터 적용
+            </span>
+          )}
+        </div>
+        <div style={{display:"grid", gridTemplateColumns:isMobile?"repeat(2,1fr)":`repeat(4,1fr)`, gap:10}}>
+          {hwStatusCards.map(c => (
+            <div key={c.key} style={{background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", padding:"14px 16px",
+              display:"flex", alignItems:"center", justifyContent:"space-between", gap:8,
+              boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+              <div>
+                <div style={{fontSize:11, color:"#94a3b8", fontWeight:600, marginBottom:4}}>{c.label}</div>
+                <div style={{fontSize:26, fontWeight:900, color: isLoading?"#e2e8f0":c.color, lineHeight:1}}>
+                  {isLoading ? "-" : c.value.toLocaleString()}
+                </div>
+              </div>
+              <div style={{width:36, height:36, borderRadius:10, background:c.bg,
+                display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0}}>
+                {c.icon}
+              </div>
             </div>
-          ))
-        }
+          ))}
+        </div>
       </div>
+
+      {/* ── 섹션3: 기타 현황 (소프트웨어 / 로그 / 휴지통) */}
+      <div>
+        <div style={{fontSize:12, fontWeight:700, color:"#64748b", marginBottom:10, display:"flex", alignItems:"center", gap:6}}>
+          <span style={{width:3, height:14, background:"#7c3aed", borderRadius:2, display:"inline-block"}}/>
+          기타 현황
+        </div>
+        <div style={{display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"repeat(3,1fr)", gap:10}}>
+          {[
+            { label:"소프트웨어", value:swTotal, color:"#7c3aed", bg:"#f5f3ff", icon:"💿", sub:null },
+            { label:"활동 로그",  value:historyCount>0?historyCount:history.length, color:"#0891b2", bg:"#ecfeff", icon:"📝", sub:null },
+            { label:"휴지통",     value:trashCount, color:"#94a3b8", bg:"#f8fafc", icon:"🗑️", sub:`장비 ${trashHW}건 · SW ${trashSW}건` },
+          ].map(c=>(
+            <div key={c.label} style={{background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", padding:"14px 16px",
+              display:"flex", alignItems:"center", justifyContent:"space-between", gap:8,
+              boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+              <div>
+                <div style={{fontSize:11, color:"#94a3b8", fontWeight:600, marginBottom:4}}>{c.label}</div>
+                <div style={{fontSize:26, fontWeight:900, color:c.color, lineHeight:1}}>
+                  {c.value.toLocaleString()}
+                </div>
+                {c.sub && <div style={{fontSize:11, color:"#94a3b8", marginTop:4}}>{c.sub}</div>}
+              </div>
+              <div style={{width:36, height:36, borderRadius:10, background:c.bg,
+                display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0}}>
+                {c.icon}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── 섹션4: 최근 활동 로그 */}
+      <div>
+        <div style={{fontSize:12, fontWeight:700, color:"#64748b", marginBottom:10, display:"flex", alignItems:"center", gap:6}}>
+          <span style={{width:3, height:14, background:"#0891b2", borderRadius:2, display:"inline-block"}}/>
+          최근 활동 로그
+        </div>
+        <div style={{background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", overflow:"hidden", boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+          {history.slice(0,10).length === 0
+            ? <div style={{padding:"32px 0", textAlign:"center", color:"#94a3b8", fontSize:13}}>활동 기록이 없습니다.</div>
+            : history.slice(0,10).map((h,i) => (
+              <div key={i} style={{
+                padding:"10px 16px",
+                borderBottom: i < Math.min(history.length,10)-1 ? "1px solid #f1f5f9" : "none",
+                display:"flex", gap:10, alignItems:"center", flexWrap:"wrap",
+                background: i%2===0 ? "#fff" : "#fafafa"
+              }}>
+                <span style={{fontSize:11, color:"#94a3b8", flexShrink:0, minWidth:90}}>{fDT(h.ts)}</span>
+                <span style={{fontSize:12, fontWeight:700, color:"#0f6e56", flexShrink:0}}>{h.username}</span>
+                <span style={{fontSize:11, background:"#f1f5f9", color:"#475569", padding:"2px 8px", borderRadius:8, flexShrink:0}}>{h.action}</span>
+                <span style={{fontSize:12, color:"#334155", fontWeight:600, flexShrink:0}}>{h.aname}</span>
+                {h.detail && <span style={{fontSize:11, color:"#94a3b8", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:300}}>{h.detail}</span>}
+              </div>
+            ))
+          }
+        </div>
+      </div>
+
     </div>
   );
 }
