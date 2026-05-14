@@ -3081,6 +3081,69 @@ function Modal({title,onClose,children}){
     </div>
   );
 }
+
+// 커스텀 가로 스크롤바 — tableContainerRef 위치 기반으로 fixed 배치
+function ScrollbarTrack({ trackRef, thumbRef, wrapRef, tableContainerRef, startThumbDrag, syncThumb }) {
+  const [rect, setRect] = React.useState(null);
+  const [visible, setVisible] = React.useState(false);
+
+  React.useEffect(() => {
+    const update = () => {
+      const el = wrapRef.current;
+      const container = tableContainerRef.current;
+      if (!el || !container) return;
+      const cr = container.getBoundingClientRect();
+      // 테이블이 화면 안에 있을 때만 표시
+      const inView = cr.bottom > 0 && cr.top < window.innerHeight;
+      setVisible(inView && el.scrollWidth > el.clientWidth);
+      setRect({ left: cr.left, width: cr.width });
+    };
+    update();
+    // main-content-area 스크롤 + resize 감지
+    const mainArea = wrapRef.current?.closest(".main-content-area");
+    if (mainArea) mainArea.addEventListener("scroll", update);
+    window.addEventListener("resize", update);
+    // syncThumb도 동기화
+    const el = wrapRef.current;
+    if (el) el.addEventListener("scroll", update);
+    return () => {
+      if (mainArea) mainArea.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+      if (el) el.removeEventListener("scroll", update);
+    };
+  }, []);
+
+  if (!visible || !rect) return null;
+
+  return (
+    <div ref={trackRef}
+      style={{
+        position: "fixed",
+        bottom: 0,
+        left: rect.left,
+        width: rect.width,
+        height: 12,
+        background: "#f1f5f9",
+        borderTop: "1px solid #e2e8f0",
+        cursor: "pointer",
+        zIndex: 100,
+      }}
+      onClick={e => {
+        const el = wrapRef.current; const tr = trackRef.current; const th = thumbRef.current;
+        if (!el || !tr || !th) return;
+        const r = tr.getBoundingClientRect();
+        el.scrollLeft = (el.scrollWidth - el.clientWidth) * ((e.clientX - r.left) / tr.clientWidth);
+        syncThumb();
+      }}>
+      <div ref={thumbRef} onMouseDown={startThumbDrag}
+        style={{ position:"absolute", top:2, height:8, background:"#94a3b8", borderRadius:4,
+          cursor:"grab", minWidth:40, transition:"background 0.15s" }}
+        onMouseEnter={e=>e.currentTarget.style.background="#64748b"}
+        onMouseLeave={e=>e.currentTarget.style.background="#94a3b8"}/>
+    </div>
+  );
+}
+
 function ResizeHandle({ onResize, onDoubleClick }) {
   const startRef = useRef(null);
   const handleMouseDown = (e) => {
@@ -3151,23 +3214,8 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  // 테이블 컨테이너의 실제 위치 기반으로 maxBodyH 동적 계산
-  // → 어느 섹션에 배치되든 툴바 높이 자동 반영
+  // tableContainerRef: 가로 스크롤바 sticky 위치 계산용
   const tableContainerRef = useRef(null);
-  useEffect(() => {
-    const calc = () => {
-      if(tableContainerRef.current) {
-        const rect = tableContainerRef.current.getBoundingClientRect();
-        // 화면 하단까지 남은 공간 - 스크롤바(12px) - 하단여백(8px)
-        setMaxBodyH(Math.max(200, window.innerHeight - rect.top - 12 - 8));
-      } else {
-        setMaxBodyH(window.innerHeight - 56 - 140 - 44 - 20);
-      }
-    };
-    calc();
-    window.addEventListener("resize", calc);
-    return () => window.removeEventListener("resize", calc);
-  }, []);
 
   // 정렬
   const sortedRows = useMemo(() => {
@@ -3200,20 +3248,22 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
   const syncThumb = useCallback(() => {
     const el = wrapRef.current; const tr = trackRef.current; const th = thumbRef.current;
     if(!el||!tr||!th) return;
-    const ratio    = el.clientWidth / el.scrollWidth;
-    const thumbW   = Math.max(40, tr.clientWidth * ratio);
-    const maxSc    = el.scrollWidth - el.clientWidth;
-    const maxTh    = tr.clientWidth - thumbW;
+    const ratio  = el.clientWidth / el.scrollWidth;
+    const thumbW = Math.max(40, tr.clientWidth * ratio);
+    const maxSc  = el.scrollWidth - el.clientWidth;
+    const maxTh  = tr.clientWidth - thumbW;
     th.style.width = thumbW + "px";
     th.style.left  = (maxSc > 0 ? (el.scrollLeft / maxSc) * maxTh : 0) + "px";
-    tr.style.display = ratio >= 1 ? "none" : "block";
+    // display 제어는 ScrollbarTrack 내부 visible state가 담당
   }, []);
 
   // wrapRef 스크롤 → 커스텀 가로 스크롤바 동기화
   const handleInnerScroll = useCallback(() => { syncThumb(); }, [syncThumb]);
   const handleWrapScroll  = useCallback(() => {
     syncThumb();
-    if(wrapRef.current) setScrollTop(wrapRef.current.scrollTop);
+    // 세로 스크롤은 main-content-area가 담당
+    const mainArea = wrapRef.current?.closest(".main-content-area");
+    if(mainArea) setScrollTop(mainArea.scrollTop);
   }, [syncThumb]);
 
   useEffect(() => {
@@ -3221,9 +3271,16 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
     if(!el) return;
     syncThumb();
     el.addEventListener("scroll", handleWrapScroll);
+    // main-content-area 세로 스크롤 시에도 thumb 동기화 (scrollLeft 변경 감지용)
+    const mainArea = el.closest(".main-content-area");
+    if(mainArea) mainArea.addEventListener("scroll", syncThumb);
     const ro = new ResizeObserver(syncThumb);
     ro.observe(el);
-    return () => { el.removeEventListener("scroll", handleWrapScroll); ro.disconnect(); };
+    return () => {
+      el.removeEventListener("scroll", handleWrapScroll);
+      if(mainArea) mainArea.removeEventListener("scroll", syncThumb);
+      ro.disconnect();
+    };
   }, [totalWidth, syncThumb, handleWrapScroll]);
 
   const startThumbDrag = (e) => {
@@ -3278,8 +3335,17 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
   };
   const Colgroup = () => <colgroup>{colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}</colgroup>;
 
-  // 가상 스크롤 endIdx 계산용 높이
-  const bodyH = maxBodyH;
+  // main-content-area 세로 스크롤 → 가상 스크롤 scrollTop 동기화
+  useEffect(() => {
+    const el = wrapRef.current?.closest(".main-content-area");
+    if(!el) return;
+    const onScroll = () => setScrollTop(el.scrollTop);
+    el.addEventListener("scroll", onScroll);
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // 가상 스크롤 가시 높이 — main-content-area 기준
+  const bodyH = typeof window !== "undefined" ? window.innerHeight : 700;
 
   return (
     <div ref={tableContainerRef} style={{background:"#fff",borderRadius:14,border:"1px solid #eee",
@@ -3301,22 +3367,19 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
         커스텀 가로 스크롤바 (wrapRef.scrollLeft 기준)
       */}
 
-      {/* 가로 스크롤 래퍼 — overflowX:auto, 세로는 main-content-area가 담당 */}
+      {/* 가로 스크롤 래퍼 — 가로만 담당, 세로 스크롤은 main-content-area(우측 스크롤바)가 담당 */}
       <div ref={wrapRef}
         className="rt-wrap"
         onScroll={handleWrapScroll}
         style={{
           overflowX: "auto",
-          overflowY: "auto",
-          maxHeight: bodyH,
+          overflowY: "visible",
           borderRadius: "14px 14px 0 0",
-          scrollbarWidth: "none",
         }}>
 
-        {/* 헤더 — sticky로 wrapRef 안에서 세로 고정, 가로는 wrapRef가 자동 동기화 */}
+        {/* 헤더 — main-content-area 스크롤 기준 sticky (툴바 아래 고정) */}
         <div ref={headerRef}
-          style={{position:"sticky",top:0,zIndex:10,background:"#fff",
-                  // ★ width를 totalWidth로 고정해야 sticky 헤더가 가로 스크롤과 함께 움직임
+          style={{position:"sticky",top:0,zIndex:20,background:"#fff",
                   width:totalWidth,minWidth:totalWidth}}>
           <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:totalWidth,minWidth:totalWidth}}>
             <Colgroup/>
@@ -3419,22 +3482,11 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
         </div>
       )}
 
-      {/* 커스텀 가로 스크롤바 — sticky로 테이블 하단에 항상 표시 */}
-      <div ref={trackRef}
-        style={{height:12,background:"#f1f5f9",borderTop:"1px solid #e2e8f0",
-          borderRadius:"0 0 14px 14px",cursor:"pointer",position:"sticky",bottom:0,zIndex:11}}
-        onClick={e=>{
-          const el=wrapRef.current; const tr=trackRef.current; const th=thumbRef.current;
-          if(!el||!tr||!th) return;
-          const rect=tr.getBoundingClientRect();
-          el.scrollLeft=(el.scrollWidth-el.clientWidth)*((e.clientX-rect.left)/tr.clientWidth);
-        }}>
-        <div ref={thumbRef} onMouseDown={startThumbDrag}
-          style={{position:"absolute",top:2,height:8,background:"#94a3b8",borderRadius:4,
-            cursor:"grab",minWidth:40,transition:"background 0.15s"}}
-          onMouseEnter={e=>e.currentTarget.style.background="#64748b"}
-          onMouseLeave={e=>e.currentTarget.style.background="#94a3b8"}/>
-      </div>
+      {/* 커스텀 가로 스크롤바 — position:fixed로 화면 하단에 항상 표시 */}
+      <ScrollbarTrack
+        trackRef={trackRef} thumbRef={thumbRef}
+        wrapRef={wrapRef} tableContainerRef={tableContainerRef}
+        startThumbDrag={startThumbDrag} syncThumb={syncThumb} />
     </div>
   );
 }
