@@ -501,7 +501,7 @@ export default function App() {
             <Btn onClick={handleLogout} style={{ fontSize:11, padding:"5px 10px" }}>로그아웃</Btn>
           </div>
         )}
-        <main style={{ padding:isMobile?"0 16px 16px":"0 32px 32px", paddingBottom:isMobile?80:40, boxSizing:"border-box", width:"100%", minWidth:0 }}>
+        <main style={{ paddingTop: view==="dashboard" ? (isMobile?16:32) : 0, paddingLeft:isMobile?16:32, paddingRight:isMobile?16:32, paddingBottom:isMobile?80:40, boxSizing:"border-box", width:"100%", minWidth:0 }}>
           {/* 
             성능 최적화: 조건부 렌더링({view==="x" && ...}) 대신 display:none으로 숨김.
             메뉴 전환 시 이미 마운트된 컴포넌트는 state를 유지한 채 즉시 표시.
@@ -769,8 +769,9 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
   const [pageSize,     setPageSize]     = useState(()=>{ try{const s=localStorage.getItem(hwPageSizeKey);return s?Number(s):20;}catch{return 20;} });
   const [currentPage,  setCurrentPage]  = useState(1);
   const [visibleCols,  setVisibleCols]  = useState(()=>loadColPref(hwColPrefKey, DEFAULT_HW_COLS));
-  const fileInputRef = useRef(null);
-  const colMenuRef   = useRef(null);
+  const fileInputRef  = useRef(null);
+  const hwToolbarRef  = useRef(null);
+  const colMenuRef    = useRef(null);
 
   useEffect(() => {
     const h = (e) => { if (colMenuRef.current && !colMenuRef.current.contains(e.target)) setShowColMenu(false); };
@@ -1242,7 +1243,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
   return (
     <div>
       {/* ── 고정 툴바 영역: 스크롤해도 항상 상단에 표시 ── */}
-      <div style={{position:"sticky",top:0,zIndex:30,background:"#f8fafc",
+      <div ref={hwToolbarRef} style={{position:"sticky",top:0,zIndex:30,background:"#f8fafc",
         padding:"20px 0 8px",marginBottom:6,
         borderBottom:"1px solid #e2e8f0"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:12}}>
@@ -1339,7 +1340,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
       </div>{/* sticky 툴바 끝 */}
       <ResponsiveTable cols={activeCols} rows={pagedRows} empty="등록된 자산이 없습니다."
         selectedIds={selectedIds} onSelectionChange={canEdit ? setSelectedIds : null}
-        onRowDoubleClick={(row)=>{setDetailItem(row);setModal("detail");}} />
+        onRowDoubleClick={(row)=>{setDetailItem(row);setModal("detail");}} toolbarRef={hwToolbarRef}/>
 
       {(modal==="add"||modal==="edit") && (
         <Modal title={modal==="add"?"새 자산 등록":"자산 정보 수정"} onClose={()=>setModal(null)}>
@@ -1511,6 +1512,8 @@ const saveColPref = (key, set) => {
 };
 
 function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, currentUser, initClinic, setHistory, setHistoryCount, setDashStats }) {
+  // swToolbarRef: sticky 툴바 ref
+  const swToolbarRef = useRef(null);
   const colPrefKey = `sw_cols_${currentUser?.loginid||"default"}`;
   const swPageSizeKey = `sw_pagesize_${currentUser?.loginid||"default"}`;
   const [modal,        setModal]       = useState(null);
@@ -1809,7 +1812,7 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
   return (
     <div>
       {/* ── 고정 툴바 영역 ── */}
-      <div style={{position:"sticky",top:0,zIndex:30,background:"#f8fafc",
+      <div ref={swToolbarRef} style={{position:"sticky",top:0,zIndex:30,background:"#f8fafc",
         padding:"20px 0 8px",marginBottom:6,borderBottom:"1px solid #e2e8f0"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:12}}>
           <h2 style={{margin:0,fontSize:20}}>소프트웨어 <span style={{fontSize:13,color:"#64748b",fontWeight:500}}>전체 {data.length}건{filtered.length!==data.length?` · 필터 ${filtered.length}건`:""}{selectedIds.size>0?` · 선택 ${selectedIds.size}건`:""}</span></h2>
@@ -1899,7 +1902,7 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
         </div>{/* 페이지네이션 끝 */}
       </div>{/* sticky 툴바 끝 */}
       <ResponsiveTable cols={activeSWCols} rows={pagedRows} empty="등록된 소프트웨어가 없습니다."
-        onRowDoubleClick={(row)=>{setForm({...row});setModal("detail");}}/>
+        onRowDoubleClick={(row)=>{setForm({...row});setModal("detail");}} toolbarRef={swToolbarRef}/>
       {modal==="detail"&&(
         <Modal title="소프트웨어 상세정보" onClose={()=>setModal(null)}>
           <SWDetailView item={form} onEdit={canEdit?()=>setModal("edit"):null}/>
@@ -1998,6 +2001,7 @@ function SWForm({ form, setForm, onSave, loading, isAdd }) {
 // 👤 [사용자 관리]
 // ================================================================
 function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
+  const uToolbarRef = useRef(null);
   const usersPageSizeKey = `users_pagesize_${currentUser?.loginid||"default"}`;
   const [modal,   setModal]  = useState(null);
   const [form,    setForm]   = useState({});
@@ -2129,7 +2133,7 @@ function UsersSection({ users, setUsers, addHistory, isAdmin, currentUser }) {
 
   return (
     <div>
-      <div style={{position:"sticky",top:0,zIndex:30,background:"#f8fafc",
+      <div ref={uToolbarRef} style={{position:"sticky",top:0,zIndex:30,background:"#f8fafc",
         padding:"20px 0 8px",marginBottom:6,borderBottom:"1px solid #e2e8f0"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
           <h2 style={{margin:0,fontSize:20}}>사용자 계정 ({users.length}명)</h2>
@@ -2213,6 +2217,7 @@ const CATEGORY_BADGE = {
 };
 
 function HistorySection({ history, historyCount, currentUser }) {
+  const hToolbarRef = useRef(null);
   const histPageSizeKey = `hist_pagesize_${currentUser?.loginid||"default"}`;
   const [query,      setQuery]      = useState("");
   const [field,      setField]      = useState("all");
@@ -2246,7 +2251,7 @@ function HistorySection({ history, historyCount, currentUser }) {
 
   return (
     <div>
-      <div style={{position:"sticky",top:0,zIndex:30,background:"#f8fafc",
+      <div ref={hToolbarRef} style={{position:"sticky",top:0,zIndex:30,background:"#f8fafc",
         padding:"20px 0 8px",marginBottom:6,borderBottom:"1px solid #e2e8f0"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
           <h2 style={{margin:0}}>활동 로그</h2>
@@ -2841,7 +2846,7 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
   return (
     <div>
       {/* ── 고정 툴바 영역: 다른 메뉴들과 동일한 스타일 ── */}
-      <div style={{position:"sticky",top:0,zIndex:30,background:"#f8fafc",
+      <div ref={hwToolbarRef} style={{position:"sticky",top:0,zIndex:30,background:"#f8fafc",
         padding:"20px 0 8px",marginBottom:6,
         borderBottom:"1px solid #e2e8f0"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}}>
@@ -3291,7 +3296,7 @@ const VIRT_ROW_H = 40;
 const VIRT_OVERSCAN = 8;
 const VIRT_THRESHOLD = 9999; // 세로 스크롤이 main-content-area 담당이므로 가상 스크롤 비활성화
 
-function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowDoubleClick, selectedIds, onSelectionChange}){
+function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowDoubleClick, selectedIds, onSelectionChange, toolbarRef}){
   const calcW = (c) => {
     if(c.minWidth) return c.minWidth;
     const lbl = typeof c.label==="function" ? "" : (c.label||"");
@@ -3304,6 +3309,7 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
   const [sortDir,     setSortDir]     = useState("asc");
   const [ctxMenu,     setCtxMenu]     = useState(null);
   const [scrollTop,   setScrollTop]   = useState(0);
+  const [headerTop,   setHeaderTop]   = useState(0); // sticky 헤더 top = 툴바 높이
   const [maxBodyH,    setMaxBodyH]    = useState(500);
 
   const wrapRef          = useRef(null);
@@ -3333,6 +3339,17 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
     window.addEventListener("resize", calc);
     return () => window.removeEventListener("resize", calc);
   }, []);
+
+  // 헤더 top = 툴바 높이 (toolbarRef bottom 기준)
+  useEffect(() => {
+    const el = toolbarRef?.current;
+    if(!el) return;
+    const update = () => setHeaderTop(el.getBoundingClientRect().height);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [toolbarRef]);
 
   // 헤더는 position:sticky 방식 — JS 위치계산 불필요
 
@@ -3515,7 +3532,7 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
            sticky 컨테이너(main-content-area)가 스크롤하면 헤더가 자동으로 상단에 고정됨
            가로 스크롤: wrapRef.scrollLeft → headerRef.scrollLeft 동기화 */}
       <div style={{
-        position:"sticky", top:0, zIndex:20,
+        position:"sticky", top:headerTop, zIndex:20,
         background:"#fff",
         borderRadius:"14px 14px 0 0",
         borderBottom:"2px solid #e2e8f0",
