@@ -3294,6 +3294,7 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
 
   const wrapRef          = useRef(null);
   const headerRef        = useRef(null);
+  const fixedHeaderRef   = useRef(null); // position:fixed 헤더 외부 wrapper
   const ctxRef           = useRef(null);
   const thumbRef         = useRef(null);
   const trackRef         = useRef(null);
@@ -3311,12 +3312,50 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  // 가상 스크롤 가시 높이 — window 기준 (endIdx 계산용, 실제 스크롤은 main-content-area 담당)
+  // 가상 스크롤 가시 높이 — window 기준 (endIdx 계산용)
   useEffect(() => {
     const calc = () => setMaxBodyH(window.innerHeight * 0.75);
     calc();
     window.addEventListener("resize", calc);
     return () => window.removeEventListener("resize", calc);
+  }, []);
+
+  // ★ fixed 헤더 위치 계산: tableContainerRef의 좌표를 추적하여 fixed 헤더에 적용
+  useEffect(() => {
+    const el   = tableContainerRef.current;
+    const hdr  = fixedHeaderRef.current;
+    const wrap = wrapRef.current;
+    if(!el || !hdr) return;
+
+    // main-content-area 스크롤 컨테이너 찾기
+    const scrollEl = el.closest(".main-content-area");
+
+    const update = () => {
+      const rect = el.getBoundingClientRect();
+      // tableContainerRef의 위쪽 위치: 부모 sticky top과 맞춤
+      // rt-wrap 바로 위 tableContainerRef 전에 헤더 공간(VIRT_ROW_H)이 있으므로
+      // fixed 헤더는 tableContainerRef의 위 = 헤더 placeholder 위쪽
+      const parentRect = el.parentElement?.getBoundingClientRect() || rect;
+      hdr.style.top   = (parentRect.top + VIRT_ROW_H) + "px"; // placeholder 아래 = 바디 시작 위
+      // 실제로 헤더는 placeholder 위에 위치해야 함
+      // outer div(border+borderRadius 포함) 기준
+      const outerRect = el.closest("[data-rt-outer]")?.getBoundingClientRect() || parentRect;
+      hdr.style.top   = outerRect.top + "px";
+      hdr.style.left  = outerRect.left + "px";
+      hdr.style.width = outerRect.width + "px";
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(document.documentElement);
+    if(scrollEl) scrollEl.addEventListener("scroll", update);
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      ro.disconnect();
+      if(scrollEl) scrollEl.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
   }, []);
 
   // 5. 정렬 — 숫자/문자 자동 감지
@@ -3362,8 +3401,8 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
   }, []);
 
   const handleWrapScroll = useCallback(() => {
-    syncThumb(); // 커스텀 스크롤바 thumb 위치 갱신
-    // ★ 헤더 가로 스크롤 동기화 (헤더가 rt-wrap 바깥에 있으므로 JS로 직접 맞춤)
+    syncThumb();
+    // fixed 헤더 가로 스크롤 동기화
     if(wrapRef.current && headerRef.current) {
       headerRef.current.scrollLeft = wrapRef.current.scrollLeft;
     }
@@ -3420,10 +3459,20 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
     }
   }, [onSelectionChange, selectedIds, lastClickedIdx, sortedRows]);
 
-  const handleColHeaderClick = (i) => {
+  // 더블클릭 감지용 타임스탬프 (더블클릭 시 정렬 억제)
+  const lastClickRef = useRef({col:-1, ts:0});
+  const handleColHeaderClick = (i, e) => {
     const col = cols[i];
     if(!col || typeof col.label==="function" || col.noClip) return;
     if(!col.key && !col.sortVal) return;
+    const now = Date.now();
+    const last = lastClickRef.current;
+    // 300ms 이내 같은 컬럼 두 번 클릭 = 더블클릭 → autoFitCol용이므로 정렬 억제
+    if(last.col===i && now - last.ts < 300) {
+      lastClickRef.current = {col:-1, ts:0};
+      return;
+    }
+    lastClickRef.current = {col:i, ts:now};
     if(sortKey===i) setSortDir(d=>d==="asc"?"desc":"asc");
     else { setSortKey(i); setSortDir("asc"); }
     setCtxMenu(null);
@@ -3481,17 +3530,21 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
      *   ├── 우클릭 메뉴
      *   └── 커스텀 가로 스크롤바 (position:sticky bottom:0) — 항상 화면 하단 고정
      */
-    <div style={{background:"#fff",borderRadius:14,border:"1px solid #eee",
+    <div data-rt-outer="1" style={{background:"#fff",borderRadius:14,border:"1px solid #eee",
       display:"flex",flexDirection:"column",position:"relative"}}>
 
-      {/* ★ 헤더: rt-wrap 바깥, position:sticky top:0 → 세로 스크롤해도 항상 고정 */}
-      <div style={{
-        position:"sticky", top:0, zIndex:20,
+      {/* ★ 헤더: position:fixed로 뷰포트에 고정
+           left/width/top은 tableContainerRef 위치 기반으로 JS에서 계산
+           가로 스크롤: wrapRef.scrollLeft → headerRef.scrollLeft 동기화 */}
+      <div ref={fixedHeaderRef} style={{
+        position:"fixed", zIndex:200,
         background:"#fff",
         borderRadius:"14px 14px 0 0",
         borderBottom:"2px solid #e2e8f0",
-        overflow:"hidden",           /* 가로 스크롤바 숨김 */
-        boxShadow:"0 2px 8px rgba(0,0,0,0.06)",
+        overflow:"hidden",
+        boxShadow:"0 2px 8px rgba(0,0,0,0.08)",
+        // 초기값: JS useEffect에서 정확히 계산
+        top:0, left:0, width:"100%",
       }}>
         <div ref={headerRef} style={{overflowX:"hidden",overflowY:"hidden"}}>
           <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:totalWidth,minWidth:totalWidth}}>
@@ -3502,7 +3555,7 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
                   const isSortable = !isCheckboxCol(i) && typeof c.label!=="function" && !c.noClip && (c.key||c.sortVal);
                   return (
                     <th key={i}
-                      onClick={()=>{ if(!isCheckboxCol(i)) handleColHeaderClick(i); }}
+                      onClick={(e)=>{ if(!isCheckboxCol(i)) handleColHeaderClick(i,e); }}
                       onContextMenu={(e)=>{ if(!isCheckboxCol(i)) handleColHeaderRightClick(e,i); }}
                       style={{
                         padding: isCheckboxCol(i) ? "0" : (i===0?"10px 4px":"12px 12px"),
@@ -3532,6 +3585,9 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
           </table>
         </div>
       </div>
+
+      {/* 헤더 높이만큼 공간 확보 (fixed 헤더가 내용을 가리지 않도록) */}
+      <div style={{height:VIRT_ROW_H, flexShrink:0, borderRadius:"14px 14px 0 0", background:"linear-gradient(180deg,#f1f5f9 0%,#e8eef4 100%)", borderBottom:"2px solid #e2e8f0"}}/>
 
       {/* 바디 — rt-wrap이 가로 스크롤 담당 */}
       <div ref={tableContainerRef}>
