@@ -282,22 +282,22 @@ export default function App() {
       *, *::before, *::after { box-sizing: border-box; }
       #root { height: 100%; overflow: hidden; }
 
-      /* ── main-content-area: 세로 스크롤 ── */
-      .main-content-area { scrollbar-width: thin; scrollbar-color: #94a3b8 #f1f5f9; -webkit-overflow-scrolling: touch; }
-      .main-content-area::-webkit-scrollbar       { width: 8px; }
-      .main-content-area::-webkit-scrollbar-track { background: #f1f5f9; border-left: 1px solid #e2e8f0; }
-      .main-content-area::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 6px; border: 2px solid #f1f5f9; }
-      .main-content-area::-webkit-scrollbar-thumb:hover { background: #64748b; }
-
-      /* ── rt-wrap: 가로 스크롤 전담 ── */
-      .rt-wrap { scrollbar-width: none; -webkit-overflow-scrolling: touch; }
-      .rt-wrap::-webkit-scrollbar { width: 0; height: 0; display: none; }
-
-      /* ── 모달 등 기타 스크롤바 ── */
+      /* ── 기타(모달 등) 스크롤바 기본값 ── */
       ::-webkit-scrollbar { width: 5px; height: 5px; }
       ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
       ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+      /* ── main-content-area: 세로 스크롤 전담 (가로 없음) ── */
+      .main-content-area { scrollbar-width: thin; scrollbar-color: #94a3b8 #f1f5f9; -webkit-overflow-scrolling: touch; }
+      .main-content-area::-webkit-scrollbar        { width: 8px !important; height: 0px !important; }
+      .main-content-area::-webkit-scrollbar-track  { background: #f1f5f9; border-left: 1px solid #e2e8f0; }
+      .main-content-area::-webkit-scrollbar-thumb  { background: #94a3b8; border-radius: 6px; border: 2px solid #f1f5f9; }
+      .main-content-area::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+      /* ── rt-wrap: 가로 스크롤 전담 (세로 없음, 네이티브 바 완전 숨김) ── */
+      .rt-wrap { scrollbar-width: none !important; -webkit-overflow-scrolling: touch; }
+      .rt-wrap::-webkit-scrollbar { width: 0px !important; height: 0px !important; display: none !important; }
 
       /* ── 모바일 safe area (아이폰 홈바 등) ── */
       @supports (padding-bottom: env(safe-area-inset-bottom)) {
@@ -3275,7 +3275,7 @@ function ResizeHandle({ onResize, onDoubleClick }) {
 // ── 가상 스크롤 상수
 const VIRT_ROW_H = 40;
 const VIRT_OVERSCAN = 8;
-const VIRT_THRESHOLD = 500;
+const VIRT_THRESHOLD = 9999; // 세로 스크롤이 main-content-area 담당이므로 가상 스크롤 비활성화
 
 function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowDoubleClick, selectedIds, onSelectionChange}){
   const calcW = (c) => {
@@ -3311,15 +3311,9 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
+  // 가상 스크롤 가시 높이 — window 기준 (endIdx 계산용, 실제 스크롤은 main-content-area 담당)
   useEffect(() => {
-    const calc = () => {
-      if(tableContainerRef.current) {
-        const rect = tableContainerRef.current.getBoundingClientRect();
-        setMaxBodyH(Math.max(200, window.innerHeight - rect.top - 12 - 8));
-      } else {
-        setMaxBodyH(window.innerHeight - 56 - 140 - 44 - 20);
-      }
-    };
+    const calc = () => setMaxBodyH(window.innerHeight * 0.75);
     calc();
     window.addEventListener("resize", calc);
     return () => window.removeEventListener("resize", calc);
@@ -3368,8 +3362,7 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
   }, []);
 
   const handleWrapScroll = useCallback(() => {
-    syncThumb();
-    if(wrapRef.current) setScrollTop(wrapRef.current.scrollTop);
+    syncThumb(); // 가로 스크롤 시 커스텀 thumb 위치 갱신
   }, [syncThumb]);
 
   useEffect(() => {
@@ -3475,16 +3468,8 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
   return (
     <div ref={tableContainerRef} style={{background:"#fff",borderRadius:14,border:"1px solid #eee",
       display:"flex",flexDirection:"column",position:"relative"}}>
-      <style>{`
-        .rt-wrap { scrollbar-width: thin; scrollbar-color: #cbd5e1 #f1f5f9; }
-        .rt-wrap::-webkit-scrollbar { width:8px; height:0px; }
-        .rt-wrap::-webkit-scrollbar-track { background:#f1f5f9; }
-        .rt-wrap::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:4px; }
-        .rt-wrap::-webkit-scrollbar-thumb:hover { background:#94a3b8; }
-      `}</style>
-
       <div ref={wrapRef} className="rt-wrap" onScroll={handleWrapScroll}
-        style={{overflowX:"auto",overflowY:"auto",maxHeight:maxBodyH,borderRadius:"14px 14px 0 0"}}>
+        style={{overflowX:"auto",overflowY:"hidden",borderRadius:"14px 14px 0 0"}}>
 
         {/* 헤더 sticky */}
         <div ref={headerRef} style={{position:"sticky",top:0,zIndex:10,background:"#fff",width:totalWidth,minWidth:totalWidth}}>
@@ -3615,7 +3600,7 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
       {/* 커스텀 가로 스크롤바 */}
       <div ref={trackRef}
         style={{height:12,background:"#f1f5f9",borderTop:"1px solid #e2e8f0",
-          borderRadius:"0 0 14px 14px",cursor:"pointer",position:"sticky",bottom:0,zIndex:11}}
+          borderRadius:"0 0 14px 14px",cursor:"pointer",position:"relative",zIndex:11}}
         onClick={e=>{
           const el=wrapRef.current, tr=trackRef.current, th=thumbRef.current;
           if(!el||!tr||!th) return;
