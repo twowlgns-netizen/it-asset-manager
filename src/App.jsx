@@ -428,7 +428,7 @@ export default function App() {
     <div style={{ display:"flex", flexDirection:isMobile?"column":"row", height:"100vh", background:"#f8fafc", overflow:"hidden" }}>
       {!isMobile && (
         <div style={{ width:220, background:"#fff", borderRight:"1px solid #e2e8f0", padding:"24px 16px", display:"flex", flexDirection:"column" }}>
-          <div onClick={()=>{ setView("dashboard"); window.location.reload(); }} style={{ fontSize:16, fontWeight:800, color:"#0f6e56", marginBottom:28, cursor:"pointer", userSelect:"none" }}>IT Asset Manager</div>
+          <div onClick={()=>{ setView("dashboard"); window.location.reload(); }} style={{ fontSize:16, fontWeight:800, color:"#0f6e56", marginBottom:28, cursor:"pointer", userSelect:"none", textAlign:"center" }}>IT Asset Manager</div>
           <div style={{ flex:1 }}>
             {menuItems.map(m => (
               <div key={m.id} onClick={()=>{
@@ -2624,12 +2624,13 @@ function QRScanSection({ hw, onClose, currentUser }) {
 // ================================================================
 function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, currentUser }) {
   const trashPageSizeKey = `trash_pagesize_${currentUser?.loginid||"default"}`;
-  const [search,     setSearch]     = useState("");
-  const [filterType, setFilterType] = useState("all");
-  const [loading,    setLoading]    = useState(false);
-  const [detailItem, setDetailItem] = useState(null);
-  const [pageSize,   setPageSize]   = useState(()=>{ try{const s=localStorage.getItem(trashPageSizeKey);return s?Number(s):20;}catch{return 20;} });
-  const [currentPage,setCurrentPage]= useState(1);
+  const [search,      setSearch]     = useState("");
+  const [filterType,  setFilterType] = useState("all");
+  const [loading,     setLoading]    = useState(false);
+  const [detailItem,  setDetailItem] = useState(null);
+  const [pageSize,    setPageSize]   = useState(()=>{ try{const s=localStorage.getItem(trashPageSizeKey);return s?Number(s):20;}catch{return 20;} });
+  const [currentPage, setCurrentPage]= useState(1);
+  const [selectedIds, setSelectedIds]= useState(new Set()); // 3. 다중선택
 
   const refreshTrash = useCallback(async () => {
     setLoading(true);
@@ -2643,22 +2644,14 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
   useEffect(() => { refreshTrash(); }, [refreshTrash]);
 
   const DB_AUTO_COLS = ["id","created_at","updated_at","deleted_at"];
-
-  const getData = t => {
-    if (typeof t.item_data === "string") {
-      try { return JSON.parse(t.item_data); } catch { return {}; }
-    }
-    return t.item_data || {};
-  };
+  const getData  = t => { if(typeof t.item_data==="string"){try{return JSON.parse(t.item_data);}catch{return {};}}return t.item_data||{}; };
   const getTable = t => t.table_name || "assets";
 
   const filtered = trash.filter(t => {
-    const d = getData(t);
-    const tb = getTable(t);
-    const matchType = filterType === "all" || tb === filterType;
-    const q = search.trim().toLowerCase();
-    const matchSearch = !q || [d.gccode, d.modelname, d.name, d.team, d.assignedto, d.clinic, d.username]
-      .some(v => (v || "").toLowerCase().includes(q));
+    const d=getData(t), tb=getTable(t);
+    const matchType = filterType==="all" || tb===filterType;
+    const q=search.trim().toLowerCase();
+    const matchSearch = !q || [d.gccode,d.modelname,d.name,d.team,d.assignedto,d.clinic,d.username].some(v=>(v||"").toLowerCase().includes(q));
     return matchType && matchSearch;
   });
 
@@ -2666,48 +2659,100 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
   const pagedRows  = pageSize===0?filtered:filtered.slice((currentPage-1)*pageSize,currentPage*pageSize);
   useEffect(()=>setCurrentPage(1),[search,filterType,pageSize]);
 
+  // 페이지 체크박스 전체선택 여부
+  const allPageIds   = pagedRows.map(t=>t.id);
+  const isAllChecked = allPageIds.length>0 && allPageIds.every(id=>selectedIds.has(id));
+
+  // 단일 복구
   const restore = (trashItem) => {
-    const orig  = getData(trashItem);
-    const table = getTable(trashItem);
-    const rest  = Object.fromEntries(Object.entries(orig).filter(([k]) => !DB_AUTO_COLS.includes(k)));
-    const name  = rest.gccode || rest.modelname || rest.name || "항목";
-    const typeLabel = table === "assets" ? "장비" : "소프트웨어";
-    const aType     = table === "assets" ? "hardware" : "software";
-    if (!window.confirm(`"${name}"을(를) 복구하시겠습니까?`)) return;
+    const orig=getData(trashItem), table=getTable(trashItem);
+    const rest=Object.fromEntries(Object.entries(orig).filter(([k])=>!DB_AUTO_COLS.includes(k)));
+    const name=rest.gccode||rest.modelname||rest.name||"항목";
+    const typeLabel=table==="assets"?"장비":"소프트웨어", aType=table==="assets"?"hardware":"software";
+    if(!window.confirm(`"${name}"을(를) 복구하시겠습니까?`)) return;
     api.deleteTrash(trashItem.id)
-      .then(() => fetch(`${BASE_URL}/${table}`, {
-        method:"POST", headers:{...H,"Prefer":"return=representation"}, body: JSON.stringify(rest)
-      }).then(safeJson))
-      .then(restored => {
-        setTrash(prev => prev.filter(t => t.id !== trashItem.id));
-        const item = Array.isArray(restored) ? restored[0] : restored;
-        if (table === "assets")   setHw(prev => [...prev, item]);
-        else if (table === "software") setSw(prev => [...prev, item]);
-        addHistory("데이터 복구", aType, item?.id, name,
-          `${typeLabel} 휴지통에서 복구`, "", JSON.stringify(rest));
-      }).catch(err => alert("복구 오류: " + err.message));
+      .then(()=>fetch(`${BASE_URL}/${table}`,{method:"POST",headers:{...H,"Prefer":"return=representation"},body:JSON.stringify(rest)}).then(safeJson))
+      .then(restored=>{
+        setTrash(prev=>prev.filter(t=>t.id!==trashItem.id));
+        const item=Array.isArray(restored)?restored[0]:restored;
+        if(table==="assets") setHw(prev=>[...prev,item]);
+        else setSw(prev=>[...prev,item]);
+        addHistory("데이터 복구",aType,item?.id,name,`${typeLabel} 휴지통에서 복구`,"",JSON.stringify(rest));
+      }).catch(err=>alert("복구 오류: "+err.message));
   };
 
+  // 단일 영구삭제
   const deleteForever = (trashItem) => {
-    if (!window.confirm("영구 삭제하시겠습니까? 복구 불가합니다.")) return;
-    const orig  = getData(trashItem);
-    const name  = orig.gccode || orig.modelname || orig.name || "항목";
-    const table = getTable(trashItem);
-    const aType = table === "assets" ? "hardware" : "software";
-    api.deleteTrash(trashItem.id).then(() => {
-      setTrash(prev => prev.filter(t => t.id !== trashItem.id));
-      addHistory("영구 삭제", aType, trashItem.id, name, "휴지통에서 영구 삭제", JSON.stringify(orig), "");
+    if(!window.confirm("영구 삭제하시겠습니까? 복구 불가합니다.")) return;
+    const orig=getData(trashItem), name=orig.gccode||orig.modelname||orig.name||"항목";
+    const table=getTable(trashItem), aType=table==="assets"?"hardware":"software";
+    api.deleteTrash(trashItem.id).then(()=>{
+      setTrash(prev=>prev.filter(t=>t.id!==trashItem.id));
+      addHistory("영구 삭제",aType,trashItem.id,name,"휴지통에서 영구 삭제",JSON.stringify(orig),"");
       refreshTrash();
-    }).catch(err => alert("영구삭제 오류: " + err.message));
+    }).catch(err=>alert("영구삭제 오류: "+err.message));
+  };
+
+  // 3. 선택 복구 (병렬)
+  const restoreSelected = async () => {
+    if(selectedIds.size===0) return alert("복구할 항목을 선택하세요.");
+    if(!window.confirm(`선택한 ${selectedIds.size}건을 복구하시겠습니까?`)) return;
+    const items=pagedRows.filter(t=>selectedIds.has(t.id));
+    const BATCH=10; let ok=0,fail=0;
+    for(let i=0;i<items.length;i+=BATCH){
+      const chunk=items.slice(i,i+BATCH);
+      const results=await Promise.allSettled(chunk.map(async t=>{
+        const orig=getData(t), table=getTable(t);
+        const rest=Object.fromEntries(Object.entries(orig).filter(([k])=>!DB_AUTO_COLS.includes(k)));
+        const name=rest.gccode||rest.modelname||rest.name||"항목";
+        const aType=table==="assets"?"hardware":"software";
+        await api.deleteTrash(t.id);
+        const restored=await fetch(`${BASE_URL}/${table}`,{method:"POST",headers:{...H,"Prefer":"return=representation"},body:JSON.stringify(rest)}).then(safeJson);
+        const item=Array.isArray(restored)?restored[0]:restored;
+        if(table==="assets") setHw(prev=>[...prev,item]);
+        else setSw(prev=>[...prev,item]);
+        addHistory("데이터 복구",aType,item?.id,name,"휴지통에서 복구(선택)","",JSON.stringify(rest),true);
+        return t.id;
+      }));
+      results.forEach(r=>{ if(r.status==="fulfilled"){setTrash(prev=>prev.filter(t=>t.id!==r.value));ok++;}else fail++; });
+    }
+    setSelectedIds(new Set());
+    await refreshTrash();
+    if(fail>0) alert(`완료: ${ok}건 복구, ${fail}건 실패`);
+    else alert(`${ok}건이 복구됐습니다.`);
+  };
+
+  // 3. 선택 영구삭제 (병렬)
+  const deleteForeverSelected = async () => {
+    if(selectedIds.size===0) return alert("삭제할 항목을 선택하세요.");
+    if(!window.confirm(`선택한 ${selectedIds.size}건을 영구 삭제하시겠습니까? 복구 불가합니다.`)) return;
+    const items=pagedRows.filter(t=>selectedIds.has(t.id));
+    const BATCH=10; let ok=0,fail=0;
+    for(let i=0;i<items.length;i+=BATCH){
+      const chunk=items.slice(i,i+BATCH);
+      const results=await Promise.allSettled(chunk.map(async t=>{
+        const orig=getData(t), name=orig.gccode||orig.modelname||orig.name||"항목";
+        const table=getTable(t), aType=table==="assets"?"hardware":"software";
+        await api.deleteTrash(t.id);
+        addHistory("영구 삭제",aType,t.id,name,"휴지통에서 영구삭제(선택)",JSON.stringify(orig),"",true);
+        return t.id;
+      }));
+      results.forEach(r=>{ if(r.status==="fulfilled"){setTrash(prev=>prev.filter(t=>t.id!==r.value));ok++;}else fail++; });
+    }
+    setSelectedIds(new Set());
+    await refreshTrash();
+    if(fail>0) alert(`완료: ${ok}건 삭제, ${fail}건 실패`);
+    else alert(`${ok}건이 영구 삭제됐습니다.`);
   };
 
   return (
     <div>
+      {/* 헤더 */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
         <h2 style={{margin:0}}>휴지통 <span style={{fontSize:13,color:"#64748b",fontWeight:500}}>전체 {trash.length}건{filtered.length!==trash.length?` · 필터 ${filtered.length}건`:""}</span></h2>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
           <Btn onClick={refreshTrash} disabled={loading} style={{fontSize:12,padding:"7px 12px"}}>
-            {loading ? "조회 중..." : "🔄 새로고침"}
+            {loading?"조회 중...":"🔄 새로고침"}
           </Btn>
           <select value={filterType} onChange={e=>setFilterType(e.target.value)}
             style={{padding:"8px 10px",borderRadius:10,border:"1px solid #ddd",fontSize:13,background:"#fff"}}>
@@ -2719,11 +2764,23 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
             <span style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",color:"#94a3b8",fontSize:13}}>🔍</span>
             <input placeholder="GC코드, 모델명, 사용자 검색..." value={search} onChange={e=>setSearch(e.target.value)}
               style={{padding:"8px 10px 8px 28px",borderRadius:10,border:"1px solid #ddd",fontSize:13,width:220}}/>
-            {search && <button onClick={()=>setSearch("")}
+            {search&&<button onClick={()=>setSearch("")}
               style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"#94a3b8"}}>✕</button>}
           </div>
         </div>
       </div>
+
+      {/* 3. 선택 일괄 액션 바 */}
+      {canEdit && selectedIds.size>0 && (
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",marginBottom:10,
+          background:"#eff6ff",borderRadius:10,border:"1px solid #bfdbfe",flexWrap:"wrap"}}>
+          <span style={{fontSize:13,fontWeight:700,color:"#2563eb"}}>{selectedIds.size}건 선택됨</span>
+          <Btn onClick={restoreSelected} variant="warning" style={{fontSize:12,padding:"6px 14px"}}>🔄 선택 복구</Btn>
+          <Btn onClick={deleteForeverSelected} variant="danger" style={{fontSize:12,padding:"6px 14px"}}>🗑️ 선택 영구삭제</Btn>
+          <Btn onClick={()=>setSelectedIds(new Set())} style={{fontSize:12,padding:"6px 14px"}}>✕ 선택 해제</Btn>
+          <span style={{fontSize:11,color:"#64748b",marginLeft:4}}>Shift·Ctrl 클릭으로 다중 선택</span>
+        </div>
+      )}
 
       {/* 페이지당 개수 + 페이지네이션 */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
@@ -2735,61 +2792,69 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
           </select>
           <span style={{fontSize:12}}>({pageSize===0?"전체":filtered.length===0?"0":((currentPage-1)*pageSize+1)+"–"+Math.min(currentPage*pageSize,filtered.length)} / {filtered.length}건)</span>
         </div>
-        {totalPages>1 && (
+        {totalPages>1&&(
           <div style={{display:"flex",gap:4,alignItems:"center"}}>
-            <Btn onClick={()=>setCurrentPage(1)}          disabled={currentPage===1}          style={{padding:"5px 10px",fontSize:12}}>«</Btn>
-            <Btn onClick={()=>setCurrentPage(p=>p-1)}     disabled={currentPage===1}          style={{padding:"5px 10px",fontSize:12}}>‹</Btn>
+            <Btn onClick={()=>setCurrentPage(1)} disabled={currentPage===1} style={{padding:"5px 10px",fontSize:12}}>«</Btn>
+            <Btn onClick={()=>setCurrentPage(p=>p-1)} disabled={currentPage===1} style={{padding:"5px 10px",fontSize:12}}>‹</Btn>
             {Array.from({length:Math.min(5,totalPages)},(_,i)=>{
               let p=currentPage<=3?i+1:currentPage+i-2; if(p>totalPages)return null;
               return <Btn key={p} onClick={()=>setCurrentPage(p)}
                 style={{padding:"5px 10px",fontSize:12,background:p===currentPage?"#0f6e56":"#fff",color:p===currentPage?"#fff":"#333",border:"1px solid #ddd"}}>{p}</Btn>;
             })}
-            <Btn onClick={()=>setCurrentPage(p=>p+1)}     disabled={currentPage===totalPages} style={{padding:"5px 10px",fontSize:12}}>›</Btn>
+            <Btn onClick={()=>setCurrentPage(p=>p+1)} disabled={currentPage===totalPages} style={{padding:"5px 10px",fontSize:12}}>›</Btn>
             <Btn onClick={()=>setCurrentPage(totalPages)} disabled={currentPage===totalPages} style={{padding:"5px 10px",fontSize:12}}>»</Btn>
           </div>
         )}
       </div>
 
       <ResponsiveTable
+        selectedIds={selectedIds}
+        onSelectionChange={canEdit ? setSelectedIds : null}
         cols={[
-          { label:"번호",     minWidth:60,
-            render:(_t,ri)=><span style={{color:"#64748b",fontSize:12,fontWeight:600}}>{(ri??0)+1}</span>},
-          { label:"구분",     minWidth:110,
-            sortVal: t => getTable(t),
+          // 3. 체크박스 열
+          {
+            label:()=>(
+              <input type="checkbox" checked={isAllChecked}
+                onChange={e=>{ const n=new Set(selectedIds); if(e.target.checked){allPageIds.forEach(id=>n.add(id));}else{allPageIds.forEach(id=>n.delete(id));} setSelectedIds(n); }}
+                style={{accentColor:"#0f6e56",width:15,height:15,cursor:"pointer",display:"block",margin:"0 auto"}}/>
+            ),
+            minWidth:46, noClip:true,
+            render:t=>(
+              <input type="checkbox" checked={selectedIds.has(t.id)}
+                onChange={e=>{ const n=new Set(selectedIds); e.target.checked?n.add(t.id):n.delete(t.id); setSelectedIds(n); }}
+                onClick={e=>e.stopPropagation()}
+                style={{accentColor:"#0f6e56",width:15,height:15,cursor:"pointer",display:"block",margin:"0 auto"}}/>
+            )
+          },
+          { label:"구분",minWidth:110,sortVal:t=>getTable(t),
             render:t=>{ const tb=getTable(t); return <span style={{background:tb==="assets"?"#eff6ff":"#f0fdf4",color:tb==="assets"?"#2563eb":"#0f6e56",padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700}}>{tb==="assets"?"🖥️ 장비":"💿 소프트웨어"}</span>; }},
-          { label:"이름/코드", minWidth:180,
-            sortVal: t=>{ const d=getData(t); return d.gccode||d.modelname||d.name||""; },
+          { label:"이름/코드",minWidth:180,sortVal:t=>{const d=getData(t);return d.gccode||d.modelname||d.name||"";},
             render:t=>{ const d=getData(t); return <span style={{fontWeight:600,fontSize:13}}>{d.gccode||d.modelname||d.name||"-"}</span>; }},
-          { label:"모델/버전", minWidth:140,
-            sortVal: t=>{ const d=getData(t); return d.modelname||d.version||""; },
+          { label:"모델/버전",minWidth:140,sortVal:t=>{const d=getData(t);return d.modelname||d.version||"";},
             render:t=>{ const d=getData(t); return d.modelname||d.version||"-"; }},
-          { label:"팀/담당",  minWidth:130,
-            sortVal: t=>{ const d=getData(t); return d.team||d.assignedto||""; },
+          { label:"팀/담당",minWidth:130,sortVal:t=>{const d=getData(t);return d.team||d.assignedto||"";},
             render:t=>{ const d=getData(t); return d.team||d.assignedto||"-"; }},
-          { label:"사용자",   minWidth:110,
-            sortVal: t=>{ const d=getData(t); return d.username||""; },
+          { label:"사용자",minWidth:110,sortVal:t=>{const d=getData(t);return d.username||"";},
             render:t=>{ const d=getData(t); return d.username||"-"; }},
-          { label:"지점",     minWidth:120,
-            sortVal: t=>{ const d=getData(t); return CLINICS[d.clinic]||d.clinic||""; },
+          { label:"지점",minWidth:120,sortVal:t=>{const d=getData(t);return CLINICS[d.clinic]||d.clinic||"";},
             render:t=>{ const d=getData(t); return CLINICS[d.clinic]||d.clinic||"-"; }},
-          { label:"상태",     minWidth:110,
-            sortVal: t=>{ const d=getData(t); const sk=d.assetstatus||d.status; return ASSET_STATUS[sk]||SW_STATUS[sk]||sk||""; },
-            render:t=>{ const d=getData(t); const sk=d.assetstatus||d.status; const b=STATUS_BADGE[sk]||{bg:"#f1f5f9",color:"#64748b"}; return sk?<span style={{background:b.bg,color:b.color,padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700}}>{ASSET_STATUS[sk]||SW_STATUS[sk]||sk}</span>:"-"; }},
-          { label:"삭제일",   minWidth:155,
-            sortVal: t => t.deletedat||t.deletedAt||t.created_at||"",
-            render:t=>fDT(t.deletedat||t.deletedAt||t.created_at) },
-          { label:"관리",     minWidth:260, noClip:true, render:t=>(
+          { label:"상태",minWidth:110,sortVal:t=>{const d=getData(t);const sk=d.assetstatus||d.status;return ASSET_STATUS[sk]||SW_STATUS[sk]||sk||"";},
+            render:t=>{ const d=getData(t);const sk=d.assetstatus||d.status;const b=STATUS_BADGE[sk]||{bg:"#f1f5f9",color:"#64748b"};return sk?<span style={{background:b.bg,color:b.color,padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700}}>{ASSET_STATUS[sk]||SW_STATUS[sk]||sk}</span>:"-"; }},
+          { label:"삭제일",minWidth:155,sortVal:t=>t.deletedat||t.deletedAt||t.created_at||"",
+            render:t=>fDT(t.deletedat||t.deletedAt||t.created_at)},
+          { label:"관리",minWidth:210,noClip:true,render:t=>(
             <div style={{display:"flex",gap:5,flexWrap:"nowrap",alignItems:"center"}}>
               <Btn onClick={()=>setDetailItem(t)} style={{fontSize:11,padding:"5px 8px",whiteSpace:"nowrap"}}>🔍 상세</Btn>
-              {canEdit && <Btn onClick={()=>restore(t)} variant="warning" style={{fontSize:11,padding:"5px 8px",whiteSpace:"nowrap"}}>🔄 복구</Btn>}
-              {canEdit && <Btn onClick={()=>deleteForever(t)} variant="danger" style={{fontSize:11,padding:"5px 8px",whiteSpace:"nowrap"}}>🗑️ 영구삭제</Btn>}
+              {canEdit&&<Btn onClick={()=>restore(t)} variant="warning" style={{fontSize:11,padding:"5px 8px",whiteSpace:"nowrap"}}>🔄 복구</Btn>}
+              {canEdit&&<Btn onClick={()=>deleteForever(t)} variant="danger" style={{fontSize:11,padding:"5px 8px",whiteSpace:"nowrap"}}>🗑️ 영구삭제</Btn>}
             </div>
           )},
         ]}
-        rows={pagedRows} empty={search||filterType!=="all"?"검색 결과가 없습니다.":"휴지통이 비어있습니다."}
+        rows={pagedRows}
+        empty={search||filterType!=="all"?"검색 결과가 없습니다.":"휴지통이 비어있습니다."}
         onRowDoubleClick={(t)=>setDetailItem(t)}
       />
-      {detailItem && (
+      {detailItem&&(
         <Modal title="휴지통 상세정보" onClose={()=>setDetailItem(null)}>
           <TrashDetailView trashItem={detailItem} getData={getData} getTable={getTable}
             onRestore={canEdit?()=>{restore(detailItem);setDetailItem(null);}:null}
@@ -2799,7 +2864,6 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
     </div>
   );
 }
-
 
 // ================================================================
 // 🗑️ [휴지통 상세보기]
@@ -3084,29 +3148,42 @@ function Modal({title,onClose,children}){
   );
 }
 function ResizeHandle({ onResize, onDoubleClick }) {
-  const startRef = useRef(null);
+  const startRef  = useRef(null);
+  const dragging  = useRef(false); // 드래그 중 click 억제용
+
   const handleMouseDown = (e) => {
     e.preventDefault();
     e.stopPropagation();
+    dragging.current = false;
     startRef.current = { x: e.clientX };
+
     const onMove = (mv) => {
       if (!startRef.current) return;
       const delta = mv.clientX - startRef.current.x;
+      if (Math.abs(delta) > 2) dragging.current = true; // 2px 이상 이동 시 드래그로 간주
       startRef.current.x = mv.clientX;
       onResize(delta);
     };
-    const onUp = () => {
+    const onUp = (ev) => {
       startRef.current = null;
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      // 드래그가 발생했으면 이후 click 이벤트 한 번 억제
+      if (dragging.current) {
+        ev.stopPropagation();
+        const suppress = (e2) => { e2.stopPropagation(); document.removeEventListener("click", suppress, true); };
+        document.addEventListener("click", suppress, true);
+      }
+      dragging.current = false;
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   };
+
   return (
     <div
       onMouseDown={handleMouseDown}
-      onDoubleClick={(e)=>{ e.stopPropagation(); onDoubleClick && onDoubleClick(); }}
+      onDoubleClick={(e)=>{ e.stopPropagation(); if(!dragging.current) onDoubleClick?.(); }}
       style={{position:"absolute",right:0,top:0,bottom:0,width:6,cursor:"col-resize",zIndex:10,
         background:"transparent",borderRight:"2px solid transparent",transition:"border-color 0.15s"}}
       onMouseEnter={e=>e.currentTarget.style.borderRightColor="#0f6e56"}
@@ -3117,9 +3194,356 @@ function ResizeHandle({ onResize, onDoubleClick }) {
 // ── 가상 스크롤 상수
 const VIRT_ROW_H = 40;
 const VIRT_OVERSCAN = 8;
-const VIRT_THRESHOLD = 500;  // 세로 스크롤이 외부 컨테이너에 있으므로 threshold 상향
+const VIRT_THRESHOLD = 500;
 
-function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowDoubleClick}){
+function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowDoubleClick, selectedIds, onSelectionChange}){
+  const calcW = (c) => {
+    if(c.minWidth) return c.minWidth;
+    const lbl = typeof c.label==="function" ? "" : (c.label||"");
+    return Math.max(80, lbl.length * 16 + 32);
+  };
+  const [colWidths,   setColWidths]   = useState(() => cols.map(calcW));
+  // 6. Shift/Ctrl 다중 선택 — lastClickedIdx: shift 범위 기준점
+  const [lastClickedIdx, setLastClickedIdx] = useState(null);
+  const [sortKey,     setSortKey]     = useState(null);
+  const [sortDir,     setSortDir]     = useState("asc");
+  const [ctxMenu,     setCtxMenu]     = useState(null);
+  const [scrollTop,   setScrollTop]   = useState(0);
+  const [maxBodyH,    setMaxBodyH]    = useState(500);
+
+  const wrapRef          = useRef(null);
+  const headerRef        = useRef(null);
+  const ctxRef           = useRef(null);
+  const thumbRef         = useRef(null);
+  const trackRef         = useRef(null);
+  const tableContainerRef= useRef(null);
+
+  const useVirtual = rows.length >= VIRT_THRESHOLD;
+
+  useEffect(() => {
+    setColWidths(prev => prev.length !== cols.length ? cols.map(calcW) : prev);
+  }, [cols.length]);
+
+  useEffect(() => {
+    const h = (e) => { if(ctxRef.current && !ctxRef.current.contains(e.target)) setCtxMenu(null); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  useEffect(() => {
+    const calc = () => {
+      if(tableContainerRef.current) {
+        const rect = tableContainerRef.current.getBoundingClientRect();
+        setMaxBodyH(Math.max(200, window.innerHeight - rect.top - 12 - 8));
+      } else {
+        setMaxBodyH(window.innerHeight - 56 - 140 - 44 - 20);
+      }
+    };
+    calc();
+    window.addEventListener("resize", calc);
+    return () => window.removeEventListener("resize", calc);
+  }, []);
+
+  // 5. 정렬 — 숫자/문자 자동 감지
+  const sortedRows = useMemo(() => {
+    if(sortKey === null) return rows;
+    const col = cols[sortKey];
+    if(!col || col.noClip === true) return rows;
+    const getVal = col.sortVal
+      ? (row) => { try { const v = col.sortVal(row); return v == null ? "" : String(v); } catch { return ""; } }
+      : col.key ? (row) => String(row[col.key] ?? "") : null;
+    if(!getVal) return rows;
+    return [...rows].sort((a, b) => {
+      const av = getVal(a), bv = getVal(b);
+      // 숫자 감지: 둘 다 숫자면 숫자 정렬, 아니면 문자열 정렬
+      const n1 = Number(av.replace(/,/g,"")), n2 = Number(bv.replace(/,/g,""));
+      if(!isNaN(n1) && !isNaN(n2) && av.trim()!=="" && bv.trim()!=="") {
+        return sortDir==="asc" ? n1-n2 : n2-n1;
+      }
+      const al = av.toLowerCase(), bl = bv.toLowerCase();
+      return sortDir==="asc" ? al.localeCompare(bl,"ko") : bl.localeCompare(al,"ko");
+    });
+  }, [rows, sortKey, sortDir, cols]);
+
+  const totalHeight   = sortedRows.length * VIRT_ROW_H;
+  const startIdx      = useVirtual ? Math.max(0, Math.floor(scrollTop / VIRT_ROW_H) - VIRT_OVERSCAN) : 0;
+  const endIdx        = useVirtual ? Math.min(sortedRows.length, Math.ceil((scrollTop + maxBodyH) / VIRT_ROW_H) + VIRT_OVERSCAN) : sortedRows.length;
+  const visibleRows   = sortedRows.slice(startIdx, endIdx);
+  const paddingTop    = startIdx * VIRT_ROW_H;
+  const paddingBottom = Math.max(0, (sortedRows.length - endIdx) * VIRT_ROW_H);
+  const totalWidth    = colWidths.reduce((a,b)=>a+b,0);
+
+  // 커스텀 가로 스크롤바
+  const syncThumb = useCallback(() => {
+    const el=wrapRef.current, tr=trackRef.current, th=thumbRef.current;
+    if(!el||!tr||!th) return;
+    const ratio  = el.clientWidth / el.scrollWidth;
+    const thumbW = Math.max(40, tr.clientWidth * ratio);
+    const maxSc  = el.scrollWidth - el.clientWidth;
+    const maxTh  = tr.clientWidth - thumbW;
+    th.style.width = thumbW+"px";
+    th.style.left  = (maxSc>0 ? (el.scrollLeft/maxSc)*maxTh : 0)+"px";
+    tr.style.display = ratio>=1 ? "none" : "block";
+  }, []);
+
+  const handleWrapScroll = useCallback(() => {
+    syncThumb();
+    if(wrapRef.current) setScrollTop(wrapRef.current.scrollTop);
+  }, [syncThumb]);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if(!el) return;
+    syncThumb();
+    el.addEventListener("scroll", handleWrapScroll);
+    const ro = new ResizeObserver(syncThumb);
+    ro.observe(el);
+    return () => { el.removeEventListener("scroll", handleWrapScroll); ro.disconnect(); };
+  }, [totalWidth, syncThumb, handleWrapScroll]);
+
+  const startThumbDrag = (e) => {
+    e.preventDefault();
+    const el=wrapRef.current, tr=trackRef.current, th=thumbRef.current;
+    if(!el||!tr||!th) return;
+    const startX=e.clientX, startLeft=el.scrollLeft;
+    const trackW=tr.clientWidth, thumbW=th.offsetWidth;
+    const maxSc=el.scrollWidth-el.clientWidth;
+    const onMove=mv=>{ el.scrollLeft=Math.max(0,Math.min(maxSc,startLeft+(mv.clientX-startX)/(trackW-thumbW)*maxSc)); };
+    const onUp=()=>{ window.removeEventListener("mousemove",onMove); window.removeEventListener("mouseup",onUp); };
+    window.addEventListener("mousemove",onMove); window.addEventListener("mouseup",onUp);
+  };
+
+  // 6. Shift/Ctrl 행 클릭 다중선택
+  const handleRowClick = useCallback((e, row, ri) => {
+    if (!onSelectionChange || !selectedIds) return;
+    const rowId = row.id ?? ri;
+    if (e.shiftKey && lastClickedIdx !== null) {
+      // Shift: lastClickedIdx ~ ri 범위 토글
+      const lo = Math.min(lastClickedIdx, ri), hi = Math.max(lastClickedIdx, ri);
+      const rangeIds = sortedRows.slice(lo, hi+1).map((r,i) => r.id ?? (lo+i));
+      const next = new Set(selectedIds);
+      rangeIds.forEach(id => next.add(id));
+      onSelectionChange(next);
+    } else if (e.ctrlKey || e.metaKey) {
+      // Ctrl/Cmd: 개별 토글
+      const next = new Set(selectedIds);
+      next.has(rowId) ? next.delete(rowId) : next.add(rowId);
+      onSelectionChange(next);
+      setLastClickedIdx(ri);
+    } else {
+      // 일반 클릭: 단일 토글 (체크박스 없는 경우 행 강조만)
+      setLastClickedIdx(ri);
+    }
+  }, [onSelectionChange, selectedIds, lastClickedIdx, sortedRows]);
+
+  const handleColHeaderClick = (i) => {
+    const col = cols[i];
+    if(!col || typeof col.label==="function" || col.noClip) return;
+    if(!col.key && !col.sortVal) return;
+    if(sortKey===i) setSortDir(d=>d==="asc"?"desc":"asc");
+    else { setSortKey(i); setSortDir("asc"); }
+    setCtxMenu(null);
+  };
+  const handleColHeaderRightClick = (e, i) => {
+    const col = cols[i];
+    if(!col || typeof col.label==="function" || col.noClip) return;
+    if(!col.key && !col.sortVal) return;
+    e.preventDefault();
+    setCtxMenu({x:e.clientX, y:e.clientY, colIdx:i});
+  };
+  const autoFitCol = (i) => {
+    const col = cols[i];
+    if(!col) return;
+    const lbl = typeof col.label==="function" ? "" : (col.label||"");
+    const labelW = [...lbl].reduce((a,ch)=>a+(ch.charCodeAt(0)>127?14:8),0)+52;
+    let maxW = labelW;
+    if(col.key) rows.slice(0,200).forEach(row=>{
+      const w=[...String(row[col.key]??"")].reduce((a,ch)=>a+(ch.charCodeAt(0)>127?14:8),0)+32;
+      if(w>maxW) maxW=w;
+    });
+    setColWidths(prev=>{ const n=[...prev]; n[i]=Math.min(Math.max(maxW,60),500); return n; });
+  };
+  const handleResize = (i, delta) => {
+    setColWidths(prev=>{ const n=[...prev]; n[i]=Math.max(50,n[i]+delta); return n; });
+  };
+
+  // 2. 체크박스 열 감지: cols[0]이 체크박스 헤더(함수)인지 확인
+  const isCheckboxCol = (i) => i===0 && typeof cols[0]?.label==="function";
+
+  const isRowSelected = (row, ri) => selectedIds ? selectedIds.has(row.id ?? ri) : false;
+  const rowBg = (row, ri, hovered) => {
+    if(isRowSelected(row,ri)) return "#d1fae5";
+    if(hovered) return "#eff6ff";
+    return ri%2===0 ? "#fff" : "#f8fafc";
+  };
+
+  const sortIndicator = (i) => {
+    const col = cols[i];
+    if(!col||col.noClip||(!col.key&&!col.sortVal)) return null;
+    if(sortKey!==i) return <span style={{color:"#d1d5db",fontSize:9,marginLeft:3}}>⇅</span>;
+    return <span style={{color:"#0f6e56",fontSize:9,marginLeft:3}}>{sortDir==="asc"?"▲":"▼"}</span>;
+  };
+  const Colgroup = () => <colgroup>{colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}</colgroup>;
+
+  return (
+    <div ref={tableContainerRef} style={{background:"#fff",borderRadius:14,border:"1px solid #eee",
+      display:"flex",flexDirection:"column",position:"relative"}}>
+      <style>{`
+        .rt-wrap { scrollbar-width: thin; scrollbar-color: #cbd5e1 #f1f5f9; }
+        .rt-wrap::-webkit-scrollbar { width:8px; height:0px; }
+        .rt-wrap::-webkit-scrollbar-track { background:#f1f5f9; }
+        .rt-wrap::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:4px; }
+        .rt-wrap::-webkit-scrollbar-thumb:hover { background:#94a3b8; }
+      `}</style>
+
+      <div ref={wrapRef} className="rt-wrap" onScroll={handleWrapScroll}
+        style={{overflowX:"auto",overflowY:"auto",maxHeight:maxBodyH,borderRadius:"14px 14px 0 0"}}>
+
+        {/* 헤더 sticky */}
+        <div ref={headerRef} style={{position:"sticky",top:0,zIndex:10,background:"#fff",width:totalWidth,minWidth:totalWidth}}>
+          <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:totalWidth,minWidth:totalWidth}}>
+            <Colgroup/>
+            <thead>
+              <tr style={{background:"linear-gradient(180deg,#f1f5f9 0%,#e8eef4 100%)"}}>
+                {cols.map((c,i)=>{
+                  const isSortable = !isCheckboxCol(i) && typeof c.label!=="function" && !c.noClip && (c.key||c.sortVal);
+                  return (
+                    <th key={i}
+                      onClick={()=>{ if(!isCheckboxCol(i)) handleColHeaderClick(i); }}
+                      onContextMenu={(e)=>{ if(!isCheckboxCol(i)) handleColHeaderRightClick(e,i); }}
+                      style={{
+                        // 2. 체크박스 열: 가로세로 중앙 정렬
+                        padding: isCheckboxCol(i) ? "0" : (i===0?"10px 4px":"12px 12px"),
+                        textAlign: isCheckboxCol(i) ? "center" : (i===0?"center":"left"),
+                        verticalAlign: "middle",
+                        fontSize:11,color:"#475569",fontWeight:700,
+                        borderBottom:"2px solid #e2e8f0",borderRight:"1px solid #e8eef4",
+                        whiteSpace:"nowrap",position:"relative",userSelect:"none",
+                        overflow:"visible",boxSizing:"border-box",
+                        cursor:isSortable?"pointer":"default",
+                        width: colWidths[i],
+                        height: VIRT_ROW_H,
+                      }}>
+                      {isCheckboxCol(i)
+                        ? <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%"}}>{c.label()}</div>
+                        : <span style={{display:"flex",alignItems:"center",gap:2,overflow:"hidden",paddingRight:8}}>
+                            <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{typeof c.label==="function"?c.label():c.label}</span>
+                            {isSortable && sortIndicator(i)}
+                          </span>
+                      }
+                      {!isCheckboxCol(i) && <ResizeHandle onResize={d=>handleResize(i,d)} onDoubleClick={()=>autoFitCol(i)}/>}
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+          </table>
+        </div>
+
+        {/* 바디 */}
+        <div style={{width:totalWidth,minWidth:totalWidth}}>
+          {sortedRows.length===0
+            ? <div style={{padding:40,textAlign:"center",color:"#94a3b8"}}>{empty}</div>
+            : <>
+                {useVirtual && paddingTop>0 && <div style={{height:paddingTop}}/>}
+                <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:totalWidth,minWidth:totalWidth}}>
+                  <Colgroup/>
+                  <tbody>
+                    {visibleRows.map((row, vi) => {
+                      const ri = startIdx + vi;
+                      const sel = isRowSelected(row, ri);
+                      return (
+                        <tr key={ri}
+                          style={{borderBottom:"1px solid #f0f4f8",background:rowBg(row,ri,false),
+                            cursor:"default",height:VIRT_ROW_H,userSelect:"none"}}
+                          onClick={(e)=>handleRowClick(e,row,ri)}
+                          onDoubleClick={()=>onRowDoubleClick&&onRowDoubleClick(row)}
+                          onMouseEnter={e=>{ if(!sel) e.currentTarget.style.background="#eff6ff"; }}
+                          onMouseLeave={e=>{ e.currentTarget.style.background=rowBg(row,ri,false); }}>
+                          {cols.map((c,ci)=>(
+                            <td key={ci} style={{
+                              // 2. 체크박스 열: 완벽한 중앙 정렬
+                              padding: isCheckboxCol(ci) ? "0" : (ci===0?"9px 4px":"11px 12px"),
+                              textAlign: isCheckboxCol(ci) ? "center" : (ci===0?"center":"left"),
+                              verticalAlign: "middle",
+                              fontSize:13, height:VIRT_ROW_H,
+                              overflow:c.noClip?"visible":"hidden",
+                              textOverflow:c.noClip?"unset":"ellipsis",
+                              whiteSpace:c.noClip?"normal":"nowrap",
+                              borderRight:"1px solid #f0f4f8",
+                              boxSizing:"border-box",
+                            }}>
+                              {isCheckboxCol(ci)
+                                ? <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%"}}>
+                                    {c.render(row,ri,sortedRows)}
+                                  </div>
+                                : (c.render ? c.render(row,ri,sortedRows) : row[c.key])
+                              }
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {useVirtual && paddingBottom>0 && <div style={{height:paddingBottom}}/>}
+              </>
+          }
+        </div>
+      </div>
+
+      {/* 우클릭 컨텍스트 메뉴 — 5. 숫자 오름/내림차순 옵션 포함 */}
+      {ctxMenu && (
+        <div ref={ctxRef} style={{position:"fixed",left:ctxMenu.x,top:ctxMenu.y,background:"#fff",
+          border:"1px solid #e2e8f0",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",
+          zIndex:9999,minWidth:180,overflow:"hidden"}}>
+          <div style={{padding:"8px 14px",fontSize:11,color:"#94a3b8",borderBottom:"1px solid #f0f0f0",fontWeight:600}}>
+            {typeof cols[ctxMenu.colIdx]?.label==="string"?cols[ctxMenu.colIdx].label:"정렬"} 정렬
+          </div>
+          {[
+            {label:"▲ 오름차순 (A→Z, 1→9)", dir:"asc"},
+            {label:"▼ 내림차순 (Z→A, 9→1)", dir:"desc"},
+          ].map(opt=>(
+            <div key={opt.dir} onClick={()=>{setSortKey(ctxMenu.colIdx);setSortDir(opt.dir);setCtxMenu(null);}}
+              style={{padding:"10px 16px",fontSize:13,cursor:"pointer",
+                background:sortKey===ctxMenu.colIdx&&sortDir===opt.dir?"#e8f5e9":"transparent",
+                color:sortKey===ctxMenu.colIdx&&sortDir===opt.dir?"#0f6e56":"#334155",
+                fontWeight:sortKey===ctxMenu.colIdx&&sortDir===opt.dir?700:400}}
+              onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+              onMouseLeave={e=>e.currentTarget.style.background=sortKey===ctxMenu.colIdx&&sortDir===opt.dir?"#e8f5e9":"transparent"}>
+              {opt.label}
+            </div>
+          ))}
+          <div onClick={()=>{setSortKey(null);setCtxMenu(null);}}
+            style={{padding:"10px 16px",fontSize:13,cursor:"pointer",color:"#94a3b8",borderTop:"1px solid #f0f0f0"}}
+            onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>✕ 정렬 해제</div>
+          <div onClick={()=>{autoFitCol(ctxMenu.colIdx);setCtxMenu(null);}}
+            style={{padding:"10px 16px",fontSize:13,cursor:"pointer",color:"#334155",borderTop:"1px solid #f0f0f0"}}
+            onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>↔ 너비 자동 맞춤</div>
+        </div>
+      )}
+
+      {/* 커스텀 가로 스크롤바 */}
+      <div ref={trackRef}
+        style={{height:12,background:"#f1f5f9",borderTop:"1px solid #e2e8f0",
+          borderRadius:"0 0 14px 14px",cursor:"pointer",position:"sticky",bottom:0,zIndex:11}}
+        onClick={e=>{
+          const el=wrapRef.current, tr=trackRef.current, th=thumbRef.current;
+          if(!el||!tr||!th) return;
+          const rect=tr.getBoundingClientRect();
+          el.scrollLeft=(el.scrollWidth-el.clientWidth)*((e.clientX-rect.left)/tr.clientWidth);
+        }}>
+        <div ref={thumbRef} onMouseDown={startThumbDrag}
+          style={{position:"absolute",top:2,height:8,background:"#94a3b8",borderRadius:4,
+            cursor:"grab",minWidth:40,transition:"background 0.15s"}}
+          onMouseEnter={e=>e.currentTarget.style.background="#64748b"}
+          onMouseLeave={e=>e.currentTarget.style.background="#94a3b8"}/>
+      </div>
+    </div>
+  );
+}
   const calcW = (c) => {
     if(c.minWidth) return c.minWidth;
     const lbl = typeof c.label==="function" ? "" : (c.label||"");
