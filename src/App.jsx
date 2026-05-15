@@ -2721,6 +2721,7 @@ function QRScanSection({ hw, onClose, currentUser }) {
 // 🗑️ [휴지통]
 // ================================================================
 function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, currentUser }) {
+  const trashToolbarRef = useRef(null);
   const trashPageSizeKey = `trash_pagesize_${currentUser?.loginid||"default"}`;
   const [search,      setSearch]     = useState("");
   const [filterType,  setFilterType] = useState("all");
@@ -2846,7 +2847,7 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
   return (
     <div>
       {/* ── 고정 툴바 영역: 다른 메뉴들과 동일한 스타일 ── */}
-      <div ref={hwToolbarRef} style={{position:"sticky",top:0,zIndex:30,background:"#f8fafc",
+      <div ref={trashToolbarRef} style={{position:"sticky",top:0,zIndex:30,background:"#f8fafc",
         padding:"20px 0 8px",marginBottom:6,
         borderBottom:"1px solid #e2e8f0"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}}>
@@ -2910,6 +2911,7 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
       <ResponsiveTable
         selectedIds={selectedIds}
         onSelectionChange={canEdit ? setSelectedIds : null}
+        toolbarRef={trashToolbarRef}
         cols={[
           // 3. 체크박스 열
           {
