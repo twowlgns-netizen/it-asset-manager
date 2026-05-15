@@ -196,12 +196,18 @@ const api = {
   // 자산 — fetchAllPages로 1000건 초과도 전체 조회
   getHW: () => fetchAllPages(`${BASE_URL}/assets?select=*&order=num.asc.nullslast,created_at.desc`),
   addHW:    (d) => fetch(`${BASE_URL}/assets`, { method:"POST", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(sanitizeHW(d)) }).then(safeJson),
-  updateHW: (id,d) => fetch(`${BASE_URL}/assets?id=eq.${id}`, { method:"PATCH", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(sanitizeHW(d)) }).then(safeJson),
+  updateHW: (id,d) => {
+    const { id: _id, created_at: _ca, ...patch } = sanitizeHW(d);
+    return fetch(`${BASE_URL}/assets?id=eq.${id}`, { method:"PATCH", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(patch) }).then(safeJson);
+  },
   deleteHW: (id) => fetch(`${BASE_URL}/assets?id=eq.${id}`, { method:"DELETE", headers:H }).then(safeJson),
   // 소프트웨어
   getSW: () => fetchAllPages(`${BASE_URL}/software?select=*&order=created_at.desc`),
   addSW:    (d) => fetch(`${BASE_URL}/software`, { method:"POST", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(sanitizeSW(d)) }).then(safeJson),
-  updateSW: (id,d) => fetch(`${BASE_URL}/software?id=eq.${id}`, { method:"PATCH", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(sanitizeSW(d)) }).then(safeJson),
+  updateSW: (id,d) => {
+    const { id: _id, created_at: _ca, ...patch } = sanitizeSW(d);
+    return fetch(`${BASE_URL}/software?id=eq.${id}`, { method:"PATCH", headers:{...H,"Prefer":"return=representation"}, body:JSON.stringify(patch) }).then(safeJson);
+  },
   deleteSW: (id) => fetch(`${BASE_URL}/software?id=eq.${id}`, { method:"DELETE", headers:H }).then(safeJson),
   // 사용자
   getUsers:    () => fetch(`${BASE_URL}/users?select=*`, { headers:H }).then(safeJson),
@@ -501,7 +507,7 @@ export default function App() {
             메뉴 전환 시 이미 마운트된 컴포넌트는 state를 유지한 채 즉시 표시.
             단, QR스캔·휴지통처럼 진입 시 매번 재조회가 필요한 섹션은 조건부 렌더링 유지.
           */}
-          <div style={{display:view==="dashboard" ?"block":"none"}}><DashboardSection  hw={hw} sw={sw} history={history} historyCount={historyCount} trash={trash} isMobile={isMobile} dashStats={dashStats} /></div>
+          <div style={{display:view==="dashboard" ?"block":"none"}}><DashboardSection  hw={hw} sw={sw} history={history} historyCount={historyCount} trash={trash} isMobile={isMobile} dashStats={dashStats} setView={setView} /></div>
           <div style={{display:view==="hardware"  ?"block":"none"}}><HardwareSection   data={hw} setHw={setHw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} setView={setView} initClinic={hwClinicFilter} setHistory={setHistory} setHistoryCount={setHistoryCount} setDashStats={setDashStats} /></div>
           <div style={{display:view==="software"  ?"block":"none"}}><SoftwareSection   data={sw} setSw={setSw} addHistory={addHistory} canEdit={canEdit} trash={trash} setTrash={setTrash} currentUser={currentUser} initClinic={swClinicFilter} setHistory={setHistory} setHistoryCount={setHistoryCount} setDashStats={setDashStats} /></div>
           <div style={{display:view==="users"     ?"block":"none"}}><UsersSection      users={users} setUsers={setUsers} addHistory={addHistory} isAdmin={isAdmin} currentUser={currentUser} /></div>
@@ -535,7 +541,7 @@ export default function App() {
 // ================================================================
 // 📊 [대시보드]
 // ================================================================
-function DashboardSection({ hw, sw, history, historyCount, trash, isMobile, dashStats, onHwClinic }) {
+function DashboardSection({ hw, sw, history, historyCount, trash, isMobile, dashStats, onHwClinic, setView }) {
   const [clinicFilter, setClinicFilter] = useState("all");
 
   // ── 통계값: dashStats(DB 직접 집계) 우선, 없으면 배열 계산(폴백)
@@ -679,13 +685,21 @@ function DashboardSection({ hw, sw, history, historyCount, trash, isMobile, dash
         </div>
         <div style={{display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"repeat(3,1fr)", gap:10}}>
           {[
-            { label:"소프트웨어", value:swTotal, color:"#7c3aed", bg:"#f5f3ff", icon:"💿", sub:null },
-            { label:"활동 로그",  value:historyCount>0?historyCount:history.length, color:"#0891b2", bg:"#ecfeff", icon:"📝", sub:null },
-            { label:"휴지통",     value:trashCount, color:"#94a3b8", bg:"#f8fafc", icon:"🗑️", sub:`장비 ${trashHW}건 · SW ${trashSW}건` },
+            { label:"소프트웨어", value:swTotal,    color:"#7c3aed", bg:"#f5f3ff", icon:"💿", sub:null,                         view:"software" },
+            { label:"활동 로그",  value:historyCount>0?historyCount:history.length, color:"#0891b2", bg:"#ecfeff", icon:"📝", sub:null, view:"history" },
+            { label:"휴지통",     value:trashCount,  color:"#94a3b8", bg:"#f8fafc", icon:"🗑️", sub:`장비 ${trashHW}건 · SW ${trashSW}건`, view:"trash" },
           ].map(c=>(
-            <div key={c.label} style={{background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", padding:"14px 16px",
-              display:"flex", alignItems:"center", justifyContent:"space-between", gap:8,
-              boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+            <div key={c.label}
+              onClick={()=>setView && setView(c.view)}
+              style={{background:"#fff", borderRadius:14, border:"1px solid #e2e8f0", padding:"14px 16px",
+                display:"flex", alignItems:"center", justifyContent:"space-between", gap:8,
+                boxShadow:"0 1px 4px rgba(0,0,0,0.04)",
+                cursor: setView ? "pointer" : "default",
+                transition:"all 0.15s",
+              }}
+              onMouseEnter={e=>{ if(setView) e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,0.10)"; e.currentTarget.style.borderColor=c.color; }}
+              onMouseLeave={e=>{ e.currentTarget.style.boxShadow="0 1px 4px rgba(0,0,0,0.04)"; e.currentTarget.style.borderColor="#e2e8f0"; }}
+            >
               <div>
                 <div style={{fontSize:11, color:"#94a3b8", fontWeight:600, marginBottom:4}}>{c.label}</div>
                 <div style={{fontSize:26, fontWeight:900, color:c.color, lineHeight:1}}>
@@ -3324,32 +3338,50 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
   useEffect(() => {
     const el   = tableContainerRef.current;
     const hdr  = fixedHeaderRef.current;
-    const wrap = wrapRef.current;
     if(!el || !hdr) return;
 
-    // main-content-area 스크롤 컨테이너 찾기
     const scrollEl = el.closest(".main-content-area");
 
     const update = () => {
-      const rect = el.getBoundingClientRect();
-      // tableContainerRef의 위쪽 위치: 부모 sticky top과 맞춤
-      // rt-wrap 바로 위 tableContainerRef 전에 헤더 공간(VIRT_ROW_H)이 있으므로
-      // fixed 헤더는 tableContainerRef의 위 = 헤더 placeholder 위쪽
-      const parentRect = el.parentElement?.getBoundingClientRect() || rect;
-      hdr.style.top   = (parentRect.top + VIRT_ROW_H) + "px"; // placeholder 아래 = 바디 시작 위
-      // 실제로 헤더는 placeholder 위에 위치해야 함
-      // outer div(border+borderRadius 포함) 기준
-      const outerRect = el.closest("[data-rt-outer]")?.getBoundingClientRect() || parentRect;
-      hdr.style.top   = outerRect.top + "px";
+      const outerEl  = el.closest("[data-rt-outer]");
+      if(!outerEl || !hdr) return;
+      const outerRect = outerEl.getBoundingClientRect();
+
+      // ── 고정 툴바가 위에 있으면 그 높이를 topOffset으로 사용
+      // position:sticky 툴바는 outerEl 위의 형제 div이므로, main의 scrollTop과 무관하게
+      // 뷰포트에서 항상 일정한 bottom 위치를 갖는다.
+      // 가장 가까운 [data-rt-outer] 이전 sticky 형제의 bottom을 구함
+      let topOffset = 0;
+      const parent = outerEl.parentElement;
+      if(parent) {
+        for(const sib of parent.children) {
+          if(sib === outerEl) break;
+          const sibRect = sib.getBoundingClientRect();
+          if(sibRect.height > 0) topOffset = Math.max(topOffset, sibRect.bottom);
+        }
+      }
+      // topOffset: sticky 툴바의 하단 = 테이블 헤더가 붙을 최소 top
+      const minTop = topOffset;
+
+      // outer의 top이 minTop보다 작으면 minTop에 고정 (헤더가 화면 위로 사라지지 않음)
+      const clampedTop = Math.max(minTop, outerRect.top);
+
+      // outer가 화면 아래로 내려갔거나 헤더 하단이 outer 아래로 가면 숨김
+      const isAboveViewport = outerRect.bottom < minTop + VIRT_ROW_H;
+      const isBelowViewport = outerRect.top > window.innerHeight;
+      hdr.style.visibility = (isAboveViewport || isBelowViewport) ? "hidden" : "visible";
+
+      hdr.style.top   = clampedTop + "px";
       hdr.style.left  = outerRect.left + "px";
       hdr.style.width = outerRect.width + "px";
     };
+
     update();
     const ro = new ResizeObserver(update);
     ro.observe(document.documentElement);
-    if(scrollEl) scrollEl.addEventListener("scroll", update);
-    window.addEventListener("resize", update);
-    window.addEventListener("scroll", update, true);
+    if(scrollEl) scrollEl.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update, { passive: true });
+    window.addEventListener("scroll", update, { capture: true, passive: true });
     return () => {
       ro.disconnect();
       if(scrollEl) scrollEl.removeEventListener("scroll", update);
