@@ -1159,6 +1159,10 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
           item.assettype   = ASSETTYPE_LABEL_MAP[item.assettype]   ?? item.assettype;
         if(!item.assetstatus) item.assetstatus = "active";
         if(!item.assettype)   item.assettype   = "laptop";
+        // ── 숫자 컬럼 강제 변환 (CSV 문자열 → DB integer/numeric 타입)
+        ["purchase_cost","current_value","num"].forEach(k=>{
+          if(item[k]!==undefined && item[k]!==null && item[k]!=="") item[k]=Number(item[k])||0;
+        });
         item.num = existingMaxNum + idx + 1;
         // 파일 가져오기 시 등록자·등록일시 자동 기록
         item.registered_by = currentUser?.name || currentUser?.loginid || "알 수 없음";
@@ -1715,6 +1719,14 @@ function SoftwareSection({ data, setSw, addHistory, canEdit, trash, setTrash, cu
       const items=rawRows.filter(r=>Object.values(r).some(v=>v!=="")).map((row)=>{
         const item={status:"active"};
         SW_FIELDS.forEach(f=>{const val=row[f.label]!==undefined?row[f.label]:(row[f.key]!==undefined?row[f.key]:"");if(val!=="")item[f.key]=val;});
+        // ── 숫자 컬럼 강제 변환 (CSV는 모두 문자열로 파싱됨 → DB integer 타입과 충돌 방지)
+        if(item.quantity !== undefined && item.quantity !== "") item.quantity = parseInt(item.quantity,10) || 0;
+        if(item.cost     !== undefined && item.cost     !== "") item.cost     = parseInt(item.cost,10)     || 0;
+        // ── 한글 enum 자동 변환
+        if(item.clinic   && !VALID_SW_CLINIC_KEYS.has(item.clinic))   item.clinic   = SW_CLINIC_LABEL_MAP[item.clinic]   ?? item.clinic;
+        if(item.status   && !VALID_SW_STATUS_KEYS.has(item.status))   item.status   = SW_STATUS_LABEL_MAP[item.status]   ?? item.status;
+        if(item.category && !VALID_SW_CATEGORY_KEYS.has(item.category)) item.category = SW_CATEGORY_LABEL_MAP[item.category] ?? item.category;
+        if(!item.status) item.status = "active";
         // 파일 가져오기 시 등록자·등록일시 자동 기록
         item.registered_by = currentUser?.name || currentUser?.loginid || "알 수 없음";
         item.registered_at = nowISO();
