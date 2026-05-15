@@ -3362,7 +3362,11 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
   }, []);
 
   const handleWrapScroll = useCallback(() => {
-    syncThumb(); // 가로 스크롤 시 커스텀 thumb 위치 갱신
+    syncThumb(); // 커스텀 스크롤바 thumb 위치 갱신
+    // ★ 헤더 가로 스크롤 동기화 (헤더가 rt-wrap 바깥에 있으므로 JS로 직접 맞춤)
+    if(wrapRef.current && headerRef.current) {
+      headerRef.current.scrollLeft = wrapRef.current.scrollLeft;
+    }
   }, [syncThumb]);
 
   useEffect(() => {
@@ -3466,13 +3470,30 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
   const Colgroup = () => <colgroup>{colWidths.map((w,i)=><col key={i} style={{width:w}}/>)}</colgroup>;
 
   return (
-    <div ref={tableContainerRef} style={{background:"#fff",borderRadius:14,border:"1px solid #eee",
+    /*
+     * ★ 구조:
+     *   outer (sticky 컨테이너)
+     *   ├── 헤더 (position:sticky top:0) — 항상 화면 상단 고정
+     *   │    └── headerRef (overflow:hidden, JS로 wrapRef.scrollLeft 동기화)
+     *   ├── tableContainerRef
+     *   │    └── wrapRef.rt-wrap (overflowX:auto, overflowY:hidden) — 가로 스크롤
+     *   │         └── 바디 테이블
+     *   ├── 우클릭 메뉴
+     *   └── 커스텀 가로 스크롤바 (position:sticky bottom:0) — 항상 화면 하단 고정
+     */
+    <div style={{background:"#fff",borderRadius:14,border:"1px solid #eee",
       display:"flex",flexDirection:"column",position:"relative"}}>
-      <div ref={wrapRef} className="rt-wrap" onScroll={handleWrapScroll}
-        style={{overflowX:"auto",overflowY:"hidden",borderRadius:"14px 14px 0 0"}}>
 
-        {/* 헤더 sticky */}
-        <div ref={headerRef} style={{position:"sticky",top:0,zIndex:10,background:"#fff",width:totalWidth,minWidth:totalWidth}}>
+      {/* ★ 헤더: rt-wrap 바깥, position:sticky top:0 → 세로 스크롤해도 항상 고정 */}
+      <div style={{
+        position:"sticky", top:0, zIndex:20,
+        background:"#fff",
+        borderRadius:"14px 14px 0 0",
+        borderBottom:"2px solid #e2e8f0",
+        overflow:"hidden",           /* 가로 스크롤바 숨김 */
+        boxShadow:"0 2px 8px rgba(0,0,0,0.06)",
+      }}>
+        <div ref={headerRef} style={{overflowX:"hidden",overflowY:"hidden"}}>
           <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:totalWidth,minWidth:totalWidth}}>
             <Colgroup/>
             <thead>
@@ -3484,12 +3505,11 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
                       onClick={()=>{ if(!isCheckboxCol(i)) handleColHeaderClick(i); }}
                       onContextMenu={(e)=>{ if(!isCheckboxCol(i)) handleColHeaderRightClick(e,i); }}
                       style={{
-                        // 2. 체크박스 열: 가로세로 중앙 정렬
                         padding: isCheckboxCol(i) ? "0" : (i===0?"10px 4px":"12px 12px"),
                         textAlign: isCheckboxCol(i) ? "center" : (i===0?"center":"left"),
                         verticalAlign: "middle",
                         fontSize:11,color:"#475569",fontWeight:700,
-                        borderBottom:"2px solid #e2e8f0",borderRight:"1px solid #e8eef4",
+                        borderRight:"1px solid #e8eef4",
                         whiteSpace:"nowrap",position:"relative",userSelect:"none",
                         overflow:"visible",boxSizing:"border-box",
                         cursor:isSortable?"pointer":"default",
@@ -3511,60 +3531,63 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
             </thead>
           </table>
         </div>
+      </div>
 
-        {/* 바디 */}
-        <div style={{width:totalWidth,minWidth:totalWidth}}>
-          {sortedRows.length===0
-            ? <div style={{padding:40,textAlign:"center",color:"#94a3b8"}}>{empty}</div>
-            : <>
-                {useVirtual && paddingTop>0 && <div style={{height:paddingTop}}/>}
-                <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:totalWidth,minWidth:totalWidth}}>
-                  <Colgroup/>
-                  <tbody>
-                    {visibleRows.map((row, vi) => {
-                      const ri = startIdx + vi;
-                      const sel = isRowSelected(row, ri);
-                      return (
-                        <tr key={ri}
-                          style={{borderBottom:"1px solid #f0f4f8",background:rowBg(row,ri,false),
-                            cursor:"default",height:VIRT_ROW_H,userSelect:"none"}}
-                          onClick={(e)=>handleRowClick(e,row,ri)}
-                          onDoubleClick={()=>onRowDoubleClick&&onRowDoubleClick(row)}
-                          onMouseEnter={e=>{ if(!isRowSelected(row,ri)) e.currentTarget.style.background="#eff6ff"; }}
-                          onMouseLeave={e=>{ e.currentTarget.style.background=rowBg(row,ri,false); }}>
-                          {cols.map((c,ci)=>(
-                            <td key={ci} style={{
-                              // 2. 체크박스 열: 완벽한 중앙 정렬
-                              padding: isCheckboxCol(ci) ? "0" : (ci===0?"9px 4px":"11px 12px"),
-                              textAlign: isCheckboxCol(ci) ? "center" : (ci===0?"center":"left"),
-                              verticalAlign: "middle",
-                              fontSize:13, height:VIRT_ROW_H,
-                              overflow:c.noClip?"visible":"hidden",
-                              textOverflow:c.noClip?"unset":"ellipsis",
-                              whiteSpace:c.noClip?"normal":"nowrap",
-                              borderRight:"1px solid #f0f4f8",
-                              boxSizing:"border-box",
-                            }}>
-                              {isCheckboxCol(ci)
-                                ? <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%"}}>
-                                    {c.render(row,ri,sortedRows)}
-                                  </div>
-                                : (c.render ? c.render(row,ri,sortedRows) : row[c.key])
-                              }
-                            </td>
-                          ))}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                {useVirtual && paddingBottom>0 && <div style={{height:paddingBottom}}/>}
-              </>
-          }
+      {/* 바디 — rt-wrap이 가로 스크롤 담당 */}
+      <div ref={tableContainerRef}>
+        <div ref={wrapRef} className="rt-wrap" onScroll={handleWrapScroll}
+          style={{overflowX:"auto",overflowY:"hidden"}}>
+          <div style={{width:totalWidth,minWidth:totalWidth}}>
+            {sortedRows.length===0
+              ? <div style={{padding:40,textAlign:"center",color:"#94a3b8"}}>{empty}</div>
+              : <>
+                  {useVirtual && paddingTop>0 && <div style={{height:paddingTop}}/>}
+                  <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:totalWidth,minWidth:totalWidth}}>
+                    <Colgroup/>
+                    <tbody>
+                      {visibleRows.map((row, vi) => {
+                        const ri = startIdx + vi;
+                        return (
+                          <tr key={ri}
+                            style={{borderBottom:"1px solid #f0f4f8",background:rowBg(row,ri,false),
+                              cursor:"default",height:VIRT_ROW_H,userSelect:"none"}}
+                            onClick={(e)=>handleRowClick(e,row,ri)}
+                            onDoubleClick={()=>onRowDoubleClick&&onRowDoubleClick(row)}
+                            onMouseEnter={e=>{ if(!isRowSelected(row,ri)) e.currentTarget.style.background="#eff6ff"; }}
+                            onMouseLeave={e=>{ e.currentTarget.style.background=rowBg(row,ri,false); }}>
+                            {cols.map((c,ci)=>(
+                              <td key={ci} style={{
+                                padding: isCheckboxCol(ci) ? "0" : (ci===0?"9px 4px":"11px 12px"),
+                                textAlign: isCheckboxCol(ci) ? "center" : (ci===0?"center":"left"),
+                                verticalAlign: "middle",
+                                fontSize:13, height:VIRT_ROW_H,
+                                overflow:c.noClip?"visible":"hidden",
+                                textOverflow:c.noClip?"unset":"ellipsis",
+                                whiteSpace:c.noClip?"normal":"nowrap",
+                                borderRight:"1px solid #f0f4f8",
+                                boxSizing:"border-box",
+                              }}>
+                                {isCheckboxCol(ci)
+                                  ? <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%"}}>
+                                      {c.render(row,ri,sortedRows)}
+                                    </div>
+                                  : (c.render ? c.render(row,ri,sortedRows) : row[c.key])
+                                }
+                              </td>
+                            ))}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {useVirtual && paddingBottom>0 && <div style={{height:paddingBottom}}/>}
+                </>
+            }
+          </div>
         </div>
       </div>
 
-      {/* 우클릭 컨텍스트 메뉴 — 5. 숫자 오름/내림차순 옵션 포함 */}
+      {/* 우클릭 컨텍스트 메뉴 */}
       {ctxMenu && (
         <div ref={ctxRef} style={{position:"fixed",left:ctxMenu.x,top:ctxMenu.y,background:"#fff",
           border:"1px solid #e2e8f0",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",
@@ -3597,10 +3620,14 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
         </div>
       )}
 
-      {/* 커스텀 가로 스크롤바 */}
+      {/* ★ 커스텀 가로 스크롤바: position:sticky bottom:0 → 항상 화면 하단 고정 */}
       <div ref={trackRef}
-        style={{height:12,background:"#f1f5f9",borderTop:"1px solid #e2e8f0",
-          borderRadius:"0 0 14px 14px",cursor:"pointer",position:"relative",zIndex:11}}
+        style={{
+          height:14, background:"#f1f5f9", borderTop:"1px solid #e2e8f0",
+          borderRadius:"0 0 14px 14px", cursor:"pointer",
+          position:"sticky", bottom:0, zIndex:20,
+          boxShadow:"0 -2px 8px rgba(0,0,0,0.06)",
+        }}
         onClick={e=>{
           const el=wrapRef.current, tr=trackRef.current, th=thumbRef.current;
           if(!el||!tr||!th) return;
@@ -3608,7 +3635,7 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
           el.scrollLeft=(el.scrollWidth-el.clientWidth)*((e.clientX-rect.left)/tr.clientWidth);
         }}>
         <div ref={thumbRef} onMouseDown={startThumbDrag}
-          style={{position:"absolute",top:2,height:8,background:"#94a3b8",borderRadius:4,
+          style={{position:"absolute",top:3,height:8,background:"#94a3b8",borderRadius:4,
             cursor:"grab",minWidth:40,transition:"background 0.15s"}}
           onMouseEnter={e=>e.currentTarget.style.background="#64748b"}
           onMouseLeave={e=>e.currentTarget.style.background="#94a3b8"}/>
