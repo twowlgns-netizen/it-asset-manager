@@ -3370,19 +3370,20 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
       const isAboveViewport = outerRect.bottom < minTop + VIRT_ROW_H;
       const isBelowViewport = outerRect.top > window.innerHeight;
       hdr.style.visibility = (isAboveViewport || isBelowViewport) ? "hidden" : "visible";
-
       hdr.style.top   = clampedTop + "px";
       hdr.style.left  = outerRect.left + "px";
       hdr.style.width = outerRect.width + "px";
     };
 
-    update();
+    // ★ 첫 위치 계산은 rAF로 — DOM 레이아웃 완료 직후 실행 보장
+    const rafId = requestAnimationFrame(() => { update(); });
     const ro = new ResizeObserver(update);
     ro.observe(document.documentElement);
     if(scrollEl) scrollEl.addEventListener("scroll", update, { passive: true });
     window.addEventListener("resize", update, { passive: true });
     window.addEventListener("scroll", update, { capture: true, passive: true });
     return () => {
+      cancelAnimationFrame(rafId);
       ro.disconnect();
       if(scrollEl) scrollEl.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
@@ -3575,7 +3576,8 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
         borderBottom:"2px solid #e2e8f0",
         overflow:"hidden",
         boxShadow:"0 2px 8px rgba(0,0,0,0.08)",
-        // 초기값: JS useEffect에서 정확히 계산
+        // ★ 초기에는 숨김 — JS update()에서 위치 계산 후 visible로 전환
+        visibility:"hidden",
         top:0, left:0, width:"100%",
       }}>
         <div ref={headerRef} style={{overflowX:"hidden",overflowY:"hidden"}}>
