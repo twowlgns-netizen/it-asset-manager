@@ -69,7 +69,7 @@ const HW_SECTIONS = [
   { title: "⚙️ 사양",         keys: ["manufacturer","cpu","memory","hdd"] },
   { title: "🛒 구매 정보",     keys: ["receiptdate","purchasedate","purpose","purchaseinfo"] },
   { title: "📎 기타",          keys: ["notes"] },
-  { title: "🧾 등록/수정 정보",  keys: ["registered_by","registered_at","updated_by","updated_at"] },
+  { title: "🧾 등록/수정 정보",  keys: ["registered_by","registered_at"] },
 ];
 
 const ALL_HW_COLS = HW_FIELDS.map(f => ({ key: f.key, label: f.label }));
@@ -136,7 +136,7 @@ const HW_DB_COLS = new Set([
   "serialnumber","ip","team","username","pcname","modelname","assettype",
   "notes","macaddress","receiptdate","purchasedate","manufacturer","cpu",
   "memory","hdd","purpose","corporation","location","purchaseinfo","created_at",
-  "registered_by","registered_at","updated_by","updated_at"
+  "registered_by","registered_at"
 ]);
 // software 테이블의 실제 DB 컬럼 목록
 const SW_DB_COLS = new Set([
@@ -915,12 +915,8 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
         registered_at: nowISO(),
       };
     } else {
-      // 수정 시: 수정자·수정일시 기록
-      formData = {
-        ...formData,
-        updated_by: currentUser?.name || currentUser?.loginid || "알 수 없음",
-        updated_at: nowISO(),
-      };
+      // 수정 시: 수정자·수정일시 (DB 컬럼 없으므로 프론트에서만 참조)
+      // updated_by/updated_at은 Supabase 컬럼에 없으므로 전송하지 않음
     }
     const before = isAdd ? "" : JSON.stringify(data.find(h=>h.id===formData.id)||{});
     const req = isAdd ? api.addHW(formData) : api.updateHW(formData.id, formData);
