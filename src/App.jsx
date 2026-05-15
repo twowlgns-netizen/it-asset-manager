@@ -147,12 +147,20 @@ const SW_DB_COLS = new Set([
 
 const sanitizeHW = (obj) => {
   const out = {};
-  Object.keys(obj).forEach(k => { if (HW_DB_COLS.has(k)) out[k] = obj[k]; });
+  HW_DB_COLS.forEach(k => {
+    // id, created_at은 DB 자동 생성 → 제외
+    if (k === "id" || k === "created_at") return;
+    out[k] = (obj[k] !== undefined && obj[k] !== "") ? obj[k] : null;
+  });
   return out;
 };
 const sanitizeSW = (obj) => {
   const out = {};
-  Object.keys(obj).forEach(k => { if (SW_DB_COLS.has(k)) out[k] = obj[k]; });
+  SW_DB_COLS.forEach(k => {
+    // id, created_at은 DB 자동 생성 → 제외
+    if (k === "id" || k === "created_at") return;
+    out[k] = (obj[k] !== undefined && obj[k] !== "") ? obj[k] : null;
+  });
   return out;
 };
 
