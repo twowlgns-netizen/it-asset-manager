@@ -878,24 +878,49 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
     if (!form.gccode && !form.modelname && !form.imedcode) return alert("GC자산코드 또는 모델명을 입력하세요.");
 
     // ── 아이메드코드 중복 체크
-    // form.id가 있으면 수정 모드 → 자기 자신(같은 id) 제외하고 검사
-    // form.id가 없으면 신규 등록 모드 → 전체 대상 검사
     if (form.imedcode && form.imedcode.trim()) {
-      const selfId = form.id ? String(form.id) : null;
-      const dup = data.find(h =>
-        h.imedcode &&
-        h.imedcode.trim().toLowerCase() === form.imedcode.trim().toLowerCase() &&
-        (selfId === null || String(h.id) !== selfId)  // 수정 시 본인 id 제외
-      );
-      if (dup) {
-        return alert(
-          `⚠️ 아이메드코드 중복\n\n입력한 코드 "${form.imedcode}"는 이미 등록된 자산에 사용 중입니다.\n\n` +
-          `· GC코드: ${dup.gccode||"-"}\n` +
-          `· 모델명: ${dup.modelname||"-"}\n` +
-          `· 사용자: ${dup.username||"-"}\n` +
-          `· 지점: ${CLINICS[dup.clinic]||dup.clinic||"-"}\n\n` +
-          `아이메드코드를 다시 확인해 주세요.`
+      const isEdit = !!form.id;
+      const newCode = form.imedcode.trim().toLowerCase();
+
+      // 수정 모드: 원본 imedcode와 동일하면 자기 자신 → 중복 체크 스킵
+      if (isEdit) {
+        const original = data.find(h => h.id === form.id || String(h.id) === String(form.id));
+        const origCode = (original?.imedcode || "").trim().toLowerCase();
+        // 아이메드코드가 변경되지 않았으면 중복 체크 불필요
+        if (origCode === newCode) {
+          // 자기 자신 → 통과
+        } else {
+          // 코드가 변경됐을 때만 다른 자산과 중복 체크
+          const dup = data.find(h =>
+            h.id !== form.id && String(h.id) !== String(form.id) &&
+            h.imedcode && h.imedcode.trim().toLowerCase() === newCode
+          );
+          if (dup) {
+            return alert(
+              `⚠️ 아이메드코드 중복\n\n입력한 코드 "${form.imedcode}"는 이미 등록된 자산에 사용 중입니다.\n\n` +
+              `· GC코드: ${dup.gccode||"-"}\n` +
+              `· 모델명: ${dup.modelname||"-"}\n` +
+              `· 사용자: ${dup.username||"-"}\n` +
+              `· 지점: ${CLINICS[dup.clinic]||dup.clinic||"-"}\n\n` +
+              `아이메드코드를 다시 확인해 주세요.`
+            );
+          }
+        }
+      } else {
+        // 신규 등록: 전체 data에서 중복 검사
+        const dup = data.find(h =>
+          h.imedcode && h.imedcode.trim().toLowerCase() === newCode
         );
+        if (dup) {
+          return alert(
+            `⚠️ 아이메드코드 중복\n\n입력한 코드 "${form.imedcode}"는 이미 등록된 자산에 사용 중입니다.\n\n` +
+            `· GC코드: ${dup.gccode||"-"}\n` +
+            `· 모델명: ${dup.modelname||"-"}\n` +
+            `· 사용자: ${dup.username||"-"}\n` +
+            `· 지점: ${CLINICS[dup.clinic]||dup.clinic||"-"}\n\n` +
+            `아이메드코드를 다시 확인해 주세요.`
+          );
+        }
       }
     }
 
