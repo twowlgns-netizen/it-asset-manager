@@ -57,6 +57,8 @@ const HW_FIELDS = [
   { key: "purchaseinfo",  label: "구매정보(전자결재)", type: "text"    },
   { key: "registered_by", label: "등록자",             type: "readonly" },
   { key: "registered_at", label: "등록일시",            type: "readonly" },
+  { key: "updated_by",    label: "수정자",              type: "readonly" },
+  { key: "updated_at",    label: "수정일시",            type: "readonly" },
 ];
 const HW_FIELD_MAP = Object.fromEntries(HW_FIELDS.map(f => [f.key, f]));
 
@@ -67,11 +69,11 @@ const HW_SECTIONS = [
   { title: "⚙️ 사양",         keys: ["manufacturer","cpu","memory","hdd"] },
   { title: "🛒 구매 정보",     keys: ["receiptdate","purchasedate","purpose","purchaseinfo"] },
   { title: "📎 기타",          keys: ["notes"] },
-  { title: "🧾 등록 정보",       keys: ["registered_by","registered_at"] },
+  { title: "🧾 등록/수정 정보",  keys: ["registered_by","registered_at","updated_by","updated_at"] },
 ];
 
 const ALL_HW_COLS = HW_FIELDS.map(f => ({ key: f.key, label: f.label }));
-const DEFAULT_HW_COLS = new Set(["num","assetstatus","clinic","gccode","team","username","modelname","assettype","location","registered_by","registered_at"]);
+const DEFAULT_HW_COLS = new Set(["num","assetstatus","clinic","imedcode","gccode","team","username","modelname","assettype","location","registered_by","registered_at"]);
 
 // ================================================================
 // 🛠️ 유틸리티
@@ -134,7 +136,7 @@ const HW_DB_COLS = new Set([
   "serialnumber","ip","team","username","pcname","modelname","assettype",
   "notes","macaddress","receiptdate","purchasedate","manufacturer","cpu",
   "memory","hdd","purpose","corporation","location","purchaseinfo","created_at",
-  "registered_by","registered_at"
+  "registered_by","registered_at","updated_by","updated_at"
 ]);
 // software 테이블의 실제 DB 컬럼 목록
 const SW_DB_COLS = new Set([
@@ -276,19 +278,41 @@ export default function App() {
   useEffect(() => {
     const style = document.createElement("style");
     style.textContent = `
-      html, body, #root { height: 100%; margin: 0; padding: 0; overflow: hidden; box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; }
+      *, *::before, *::after { box-sizing: border-box; }
+      #root { height: 100%; overflow: hidden; }
 
-      /* ── main-content-area: 유일한 세로 스크롤 컨테이너 ── */
-      .main-content-area { scrollbar-width: thin; scrollbar-color: #94a3b8 #f1f5f9; }
-      .main-content-area::-webkit-scrollbar       { width: 10px; }
+      /* ── main-content-area: 세로 스크롤 ── */
+      .main-content-area { scrollbar-width: thin; scrollbar-color: #94a3b8 #f1f5f9; -webkit-overflow-scrolling: touch; }
+      .main-content-area::-webkit-scrollbar       { width: 8px; }
       .main-content-area::-webkit-scrollbar-track { background: #f1f5f9; border-left: 1px solid #e2e8f0; }
       .main-content-area::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 6px; border: 2px solid #f1f5f9; }
       .main-content-area::-webkit-scrollbar-thumb:hover { background: #64748b; }
 
-      /* ── rt-wrap: 가로 스크롤 전담, 세로는 없음 ── */
-      /* 네이티브 가로 스크롤바 숨김 (커스텀으로 대체) */
-      .rt-wrap { scrollbar-width: none; overflow: -moz-scrollbars-none; }
+      /* ── rt-wrap: 가로 스크롤 전담 ── */
+      .rt-wrap { scrollbar-width: none; -webkit-overflow-scrolling: touch; }
       .rt-wrap::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+      /* ── 모달 등 기타 스크롤바 ── */
+      ::-webkit-scrollbar { width: 5px; height: 5px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+      /* ── 모바일 safe area (아이폰 홈바 등) ── */
+      @supports (padding-bottom: env(safe-area-inset-bottom)) {
+        .mobile-tabbar { padding-bottom: env(safe-area-inset-bottom) !important; }
+      }
+
+      /* ── 모바일: 터치 & 텍스트 크기 ── */
+      @media (max-width: 768px) {
+        .main-content-area { font-size: 13px; }
+        .rt-wrap table { font-size: 11px !important; }
+        .rt-wrap td, .rt-wrap th { padding: 6px 6px !important; }
+        button { min-height: 34px; touch-action: manipulation; }
+        select, input { touch-action: manipulation; }
+        h2 { font-size: 17px !important; }
+      }
     `;
     document.head.appendChild(style);
     return () => document.head.removeChild(style);
@@ -488,7 +512,7 @@ export default function App() {
       </div>
 
       {isMobile && (
-        <div style={{ position:"fixed", bottom:0, left:0, right:0, height:65, background:"#fff", borderTop:"1px solid #e2e8f0", display:"flex", justifyContent:"space-around", alignItems:"center", zIndex:1000 }}>
+        <div className="mobile-tabbar" style={{ position:"fixed", bottom:0, left:0, right:0, background:"#fff", borderTop:"1px solid #e2e8f0", display:"flex", justifyContent:"space-around", alignItems:"center", zIndex:1000, paddingBottom:8, paddingTop:6, minHeight:56 }}>
           {/* 모바일 탭바: 지점 서브메뉴(menuType) 제외하고 주요 메뉴만 표시 */}
           {menuItems.filter(m => !m.menuType).map(m => (
             <div key={m.id} onClick={()=>{
@@ -875,6 +899,13 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
         registered_by: currentUser?.name || currentUser?.loginid || "알 수 없음",
         registered_at: nowISO(),
       };
+    } else {
+      // 수정 시: 수정자·수정일시 기록
+      formData = {
+        ...formData,
+        updated_by: currentUser?.name || currentUser?.loginid || "알 수 없음",
+        updated_at: nowISO(),
+      };
     }
     const before = isAdd ? "" : JSON.stringify(data.find(h=>h.id===formData.id)||{});
     const req = isAdd ? api.addHW(formData) : api.updateHW(formData.id, formData);
@@ -927,16 +958,62 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
   };
 
   const exportCSV = () => {
-    const header = HW_FIELDS.map(f=>f.label).join(",");
-    const rows = data.map(item=>HW_FIELDS.map(f=>`"${String(item[f.key]??"").replace(/"/g,'""')}"`).join(","));
-    triggerDownload(new Blob(["\uFEFF"+[header,...rows].join("\n")],{type:"text/csv;charset=utf-8"}),`장비목록_${todayStr()}.csv`);
+    const isFiltered = filterClinic!=="all" || filterStatus || filterType || searchText;
+    if (isFiltered) {
+      if (!window.confirm(
+        `현재 필터가 적용된 상태입니다.\n` +
+        `전체 ${data.length}건 중 필터된 ${filtered.length}건만 다운로드됩니다.\n\n` +
+        `계속하시겠습니까?`
+      )) return;
+    }
+    const exportData = isFiltered ? filtered : data;
+    const EXPORT_FIELDS = HW_FIELDS.map(f => f);
+    const header = ["순번", ...EXPORT_FIELDS.map(f=>f.label)].join(",");
+    const rows = exportData.map((item, idx) => {
+      const numCell = `"${idx + 1}"`;
+      const cells = EXPORT_FIELDS.map(f => {
+        let val = item[f.key] ?? "";
+        // 한글 변환
+        if (f.key === "clinic")      val = CLINICS[val]      || val;
+        if (f.key === "assetstatus") val = ASSET_STATUS[val] || val;
+        if (f.key === "assettype")   val = ASSET_TYPES[val]  || val;
+        return `"${String(val).replace(/"/g,'""')}"`;
+      });
+      return [numCell, ...cells].join(",");
+    });
+    triggerDownload(
+      new Blob(["\uFEFF"+[header,...rows].join("\n")],{type:"text/csv;charset=utf-8"}),
+      `장비목록${isFiltered?"_필터":""}${isFiltered?`_${filtered.length}건`:""}_${todayStr()}.csv`
+    );
   };
+
   const exportExcel = async () => {
+    const isFiltered = filterClinic!=="all" || filterStatus || filterType || searchText;
+    if (isFiltered) {
+      if (!window.confirm(
+        `현재 필터가 적용된 상태입니다.\n` +
+        `전체 ${data.length}건 중 필터된 ${filtered.length}건만 다운로드됩니다.\n\n` +
+        `계속하시겠습니까?`
+      )) return;
+    }
+    const exportData = isFiltered ? filtered : data;
     try {
       const XLSX = await import("xlsx");
-      const d = data.map(item=>{ const r={}; HW_FIELDS.forEach(f=>{r[f.label]=item[f.key]??""}); return r; });
-      const ws = XLSX.utils.json_to_sheet(d); const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb,ws,"장비목록"); XLSX.writeFile(wb,`장비목록_${todayStr()}.xlsx`);
+      const d = exportData.map((item, idx) => {
+        const row = { "순번": idx + 1 };
+        HW_FIELDS.forEach(f => {
+          let val = item[f.key] ?? "";
+          if (f.key === "clinic")      val = CLINICS[val]      || val;
+          if (f.key === "assetstatus") val = ASSET_STATUS[val] || val;
+          if (f.key === "assettype")   val = ASSET_TYPES[val]  || val;
+          row[f.label] = val;
+        });
+        return row;
+      });
+      const ws = XLSX.utils.json_to_sheet(d);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "장비목록");
+      XLSX.writeFile(wb, `장비목록${isFiltered?"_필터":""}${isFiltered?`_${filtered.length}건`:"_전체"}_${todayStr()}.xlsx`);
     } catch { alert("xlsx 패키지를 설치하세요: npm install xlsx"); }
   };
   // 한글 라벨 → enum 키 역방향 맵 (가져오기 시 변환용)
@@ -1090,8 +1167,8 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
     assetstatus:   h=>{ const s=STATUS_BADGE[h.assetstatus]||{bg:"#f1f5f9",color:"#64748b"}; return <span style={{background:s.bg,color:s.color,padding:"3px 8px",borderRadius:20,fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{ASSET_STATUS[h.assetstatus]||h.assetstatus||"-"}</span>; },
     clinic:        h=><span style={{fontSize:12}}>{CLINICS[h.clinic]||h.clinic||"-"}</span>,
     inspectiondate:h=><span style={{fontSize:12}}>{h.inspectiondate||"-"}</span>,
-    gccode:        h=><b style={{fontSize:12}}>{h.gccode||"-"}</b>,
-    imedcode:      h=><span style={{fontSize:12}}>{h.imedcode||"-"}</span>,
+    gccode:        h=><span style={{fontSize:12}}>{h.gccode||"-"}</span>,
+    imedcode:      h=><b style={{fontSize:12,color:"#0f6e56"}}>{h.imedcode||"-"}</b>,
     serialnumber:  h=><span style={{fontSize:12}}>{h.serialnumber||"-"}</span>,
     ip:            h=><span style={{fontSize:12}}>{h.ip||"-"}</span>,
     team:          h=><span style={{fontSize:12}}>{h.team||"-"}</span>,
@@ -1247,6 +1324,7 @@ function HardwareSection({ data, setHw, addHistory, canEdit, trash, setTrash, cu
         </div>{/* 페이지네이션 끝 */}
       </div>{/* sticky 툴바 끝 */}
       <ResponsiveTable cols={activeCols} rows={pagedRows} empty="등록된 자산이 없습니다."
+        selectedIds={selectedIds} onSelectionChange={canEdit ? setSelectedIds : null}
         onRowDoubleClick={(row)=>{setDetailItem(row);setModal("detail");}} />
 
       {(modal==="add"||modal==="edit") && (
@@ -2448,10 +2526,11 @@ function QRScanSection({ hw, onClose, currentUser }) {
     <div style={{ display:"flex", flexDirection:"column", minHeight:0 }}>
       <QRScannerLoader onLoad={() => setJsQRReady(true)} />
 
-      {/* 헤더 */}
+      {/* 헤더 — 다른 메뉴와 동일한 sticky 툴바 스타일 */}
       {!onClose && (
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12, flexShrink:0 }}>
-          <h2 style={{ fontSize:22, fontWeight:700, margin:0 }}>📷 QR 스캔</h2>
+        <div style={{ position:"sticky", top:0, zIndex:30, background:"#f8fafc",
+          padding:"20px 0 8px", marginBottom:6, borderBottom:"1px solid #e2e8f0", flexShrink:0 }}>
+          <h2 style={{ fontSize:20, fontWeight:700, margin:0 }}>📷 QR 스캔</h2>
         </div>
       )}
 
@@ -2651,7 +2730,7 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
     const d=getData(t), tb=getTable(t);
     const matchType = filterType==="all" || tb===filterType;
     const q=search.trim().toLowerCase();
-    const matchSearch = !q || [d.gccode,d.modelname,d.name,d.team,d.assignedto,d.clinic,d.username].some(v=>(v||"").toLowerCase().includes(q));
+    const matchSearch = !q || [d.imedcode,d.gccode,d.modelname,d.name,d.team,d.assignedto,d.clinic,d.username].some(v=>(v||"").toLowerCase().includes(q));
     return matchType && matchSearch;
   });
 
@@ -2747,8 +2826,11 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
 
   return (
     <div>
-      {/* 헤더 */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
+      {/* ── 고정 툴바 영역: 다른 메뉴들과 동일한 스타일 ── */}
+      <div style={{position:"sticky",top:0,zIndex:30,background:"#f8fafc",
+        padding:"20px 0 8px",marginBottom:6,
+        borderBottom:"1px solid #e2e8f0"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}}>
         <h2 style={{margin:0}}>휴지통 <span style={{fontSize:13,color:"#64748b",fontWeight:500}}>전체 {trash.length}건{filtered.length!==trash.length?` · 필터 ${filtered.length}건`:""}</span></h2>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
           <Btn onClick={refreshTrash} disabled={loading} style={{fontSize:12,padding:"7px 12px"}}>
@@ -2768,44 +2850,44 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
               style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"#94a3b8"}}>✕</button>}
           </div>
         </div>
-      </div>
 
-      {/* 3. 선택 일괄 액션 바 */}
-      {canEdit && selectedIds.size>0 && (
-        <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",marginBottom:10,
-          background:"#eff6ff",borderRadius:10,border:"1px solid #bfdbfe",flexWrap:"wrap"}}>
-          <span style={{fontSize:13,fontWeight:700,color:"#2563eb"}}>{selectedIds.size}건 선택됨</span>
-          <Btn onClick={restoreSelected} variant="warning" style={{fontSize:12,padding:"6px 14px"}}>🔄 선택 복구</Btn>
-          <Btn onClick={deleteForeverSelected} variant="danger" style={{fontSize:12,padding:"6px 14px"}}>🗑️ 선택 영구삭제</Btn>
-          <Btn onClick={()=>setSelectedIds(new Set())} style={{fontSize:12,padding:"6px 14px"}}>✕ 선택 해제</Btn>
-          <span style={{fontSize:11,color:"#64748b",marginLeft:4}}>Shift·Ctrl 클릭으로 다중 선택</span>
-        </div>
-      )}
-
-      {/* 페이지당 개수 + 페이지네이션 */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"#64748b"}}>
-          <span>페이지당</span>
-          <select value={pageSize} onChange={e=>{const v=Number(e.target.value);setPageSize(v);setCurrentPage(1);try{localStorage.setItem(trashPageSizeKey,v);}catch{}}}
-            style={{padding:"5px 8px",borderRadius:8,border:"1px solid #ddd",fontSize:13,background:"#fff"}}>
-            {[20,50,100,500,1000,0].map(n=><option key={n} value={n}>{n===0?"전체보기":n+"개"}</option>)}
-          </select>
-          <span style={{fontSize:12}}>({pageSize===0?"전체":filtered.length===0?"0":((currentPage-1)*pageSize+1)+"–"+Math.min(currentPage*pageSize,filtered.length)} / {filtered.length}건)</span>
-        </div>
-        {totalPages>1&&(
-          <div style={{display:"flex",gap:4,alignItems:"center"}}>
-            <Btn onClick={()=>setCurrentPage(1)} disabled={currentPage===1} style={{padding:"5px 10px",fontSize:12}}>«</Btn>
-            <Btn onClick={()=>setCurrentPage(p=>p-1)} disabled={currentPage===1} style={{padding:"5px 10px",fontSize:12}}>‹</Btn>
-            {Array.from({length:Math.min(5,totalPages)},(_,i)=>{
-              let p=currentPage<=3?i+1:currentPage+i-2; if(p>totalPages)return null;
-              return <Btn key={p} onClick={()=>setCurrentPage(p)}
-                style={{padding:"5px 10px",fontSize:12,background:p===currentPage?"#0f6e56":"#fff",color:p===currentPage?"#fff":"#333",border:"1px solid #ddd"}}>{p}</Btn>;
-            })}
-            <Btn onClick={()=>setCurrentPage(p=>p+1)} disabled={currentPage===totalPages} style={{padding:"5px 10px",fontSize:12}}>›</Btn>
-            <Btn onClick={()=>setCurrentPage(totalPages)} disabled={currentPage===totalPages} style={{padding:"5px 10px",fontSize:12}}>»</Btn>
+        {/* 3. 선택 일괄 액션 바 */}
+        {canEdit && selectedIds.size>0 && (
+          <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",marginTop:8,
+            background:"#eff6ff",borderRadius:10,border:"1px solid #bfdbfe",flexWrap:"wrap"}}>
+            <span style={{fontSize:13,fontWeight:700,color:"#2563eb"}}>{selectedIds.size}건 선택됨</span>
+            <Btn onClick={restoreSelected} variant="warning" style={{fontSize:12,padding:"6px 14px"}}>🔄 선택 복구</Btn>
+            <Btn onClick={deleteForeverSelected} variant="danger" style={{fontSize:12,padding:"6px 14px"}}>🗑️ 선택 영구삭제</Btn>
+            <Btn onClick={()=>setSelectedIds(new Set())} style={{fontSize:12,padding:"6px 14px"}}>✕ 선택 해제</Btn>
+            <span style={{fontSize:11,color:"#64748b",marginLeft:4}}>Shift·Ctrl 클릭으로 다중 선택</span>
           </div>
         )}
-      </div>
+
+        {/* 페이지당 개수 + 페이지네이션 */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:8,flexWrap:"wrap",gap:8}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"#64748b"}}>
+            <span>페이지당</span>
+            <select value={pageSize} onChange={e=>{const v=Number(e.target.value);setPageSize(v);setCurrentPage(1);try{localStorage.setItem(trashPageSizeKey,v);}catch{}}}
+              style={{padding:"5px 8px",borderRadius:8,border:"1px solid #ddd",fontSize:13,background:"#fff"}}>
+              {[20,50,100,500,1000,0].map(n=><option key={n} value={n}>{n===0?"전체보기":n+"개"}</option>)}
+            </select>
+            <span style={{fontSize:12}}>({pageSize===0?"전체":filtered.length===0?"0":((currentPage-1)*pageSize+1)+"–"+Math.min(currentPage*pageSize,filtered.length)} / {filtered.length}건)</span>
+          </div>
+          {totalPages>1&&(
+            <div style={{display:"flex",gap:4,alignItems:"center"}}>
+              <Btn onClick={()=>setCurrentPage(1)} disabled={currentPage===1} style={{padding:"5px 10px",fontSize:12}}>«</Btn>
+              <Btn onClick={()=>setCurrentPage(p=>p-1)} disabled={currentPage===1} style={{padding:"5px 10px",fontSize:12}}>‹</Btn>
+              {Array.from({length:Math.min(5,totalPages)},(_,i)=>{
+                let p=currentPage<=3?i+1:currentPage+i-2; if(p>totalPages)return null;
+                return <Btn key={p} onClick={()=>setCurrentPage(p)}
+                  style={{padding:"5px 10px",fontSize:12,background:p===currentPage?"#0f6e56":"#fff",color:p===currentPage?"#fff":"#333",border:"1px solid #ddd"}}>{p}</Btn>;
+              })}
+              <Btn onClick={()=>setCurrentPage(p=>p+1)} disabled={currentPage===totalPages} style={{padding:"5px 10px",fontSize:12}}>›</Btn>
+              <Btn onClick={()=>setCurrentPage(totalPages)} disabled={currentPage===totalPages} style={{padding:"5px 10px",fontSize:12}}>»</Btn>
+            </div>
+          )}
+        </div>
+      </div>{/* sticky 툴바 끝 */}
 
       <ResponsiveTable
         selectedIds={selectedIds}
@@ -2828,8 +2910,8 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
           },
           { label:"구분",minWidth:110,sortVal:t=>getTable(t),
             render:t=>{ const tb=getTable(t); return <span style={{background:tb==="assets"?"#eff6ff":"#f0fdf4",color:tb==="assets"?"#2563eb":"#0f6e56",padding:"2px 8px",borderRadius:10,fontSize:11,fontWeight:700}}>{tb==="assets"?"🖥️ 장비":"💿 소프트웨어"}</span>; }},
-          { label:"이름/코드",minWidth:180,sortVal:t=>{const d=getData(t);return d.gccode||d.modelname||d.name||"";},
-            render:t=>{ const d=getData(t); return <span style={{fontWeight:600,fontSize:13}}>{d.gccode||d.modelname||d.name||"-"}</span>; }},
+          { label:"이름/코드",minWidth:180,sortVal:t=>{const d=getData(t);return d.imedcode||d.gccode||d.modelname||d.name||"";},
+            render:t=>{ const d=getData(t); return <span style={{fontWeight:700,fontSize:13,color:"#0f6e56"}}>{d.imedcode||d.gccode||d.modelname||d.name||"-"}</span>; }},
           { label:"모델/버전",minWidth:140,sortVal:t=>{const d=getData(t);return d.modelname||d.version||"";},
             render:t=>{ const d=getData(t); return d.modelname||d.version||"-"; }},
           { label:"팀/담당",minWidth:130,sortVal:t=>{const d=getData(t);return d.team||d.assignedto||"";},
@@ -3313,17 +3395,20 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
     window.addEventListener("mousemove",onMove); window.addEventListener("mouseup",onUp);
   };
 
-  // 6. Shift/Ctrl 행 클릭 다중선택
+  // 1. Shift/Ctrl/일반클릭 다중선택
   const handleRowClick = useCallback((e, row, ri) => {
     if (!onSelectionChange || !selectedIds) return;
+    // 체크박스 클릭은 체크박스 자체의 onChange가 처리하므로 여기서는 무시
+    if (e.target.type === "checkbox") return;
     const rowId = row.id ?? ri;
     if (e.shiftKey && lastClickedIdx !== null) {
-      // Shift: lastClickedIdx ~ ri 범위 토글
+      // Shift: lastClickedIdx ~ ri 범위 전체 선택 (기존 선택 유지)
       const lo = Math.min(lastClickedIdx, ri), hi = Math.max(lastClickedIdx, ri);
       const rangeIds = sortedRows.slice(lo, hi+1).map((r,i) => r.id ?? (lo+i));
       const next = new Set(selectedIds);
       rangeIds.forEach(id => next.add(id));
       onSelectionChange(next);
+      // lastClickedIdx는 업데이트하지 않음 (shift 연속 확장을 위해)
     } else if (e.ctrlKey || e.metaKey) {
       // Ctrl/Cmd: 개별 토글
       const next = new Set(selectedIds);
@@ -3331,7 +3416,10 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
       onSelectionChange(next);
       setLastClickedIdx(ri);
     } else {
-      // 일반 클릭: 단일 토글 (체크박스 없는 경우 행 강조만)
+      // 일반 클릭: 해당 행만 토글 (다른 선택 해제)
+      const next = new Set();
+      if (!selectedIds.has(rowId)) next.add(rowId); // 이미 선택된 행 재클릭 → 해제
+      onSelectionChange(next);
       setLastClickedIdx(ri);
     }
   }, [onSelectionChange, selectedIds, lastClickedIdx, sortedRows]);
@@ -3458,7 +3546,7 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
                             cursor:"default",height:VIRT_ROW_H,userSelect:"none"}}
                           onClick={(e)=>handleRowClick(e,row,ri)}
                           onDoubleClick={()=>onRowDoubleClick&&onRowDoubleClick(row)}
-                          onMouseEnter={e=>{ if(!sel) e.currentTarget.style.background="#eff6ff"; }}
+                          onMouseEnter={e=>{ if(!isRowSelected(row,ri)) e.currentTarget.style.background="#eff6ff"; }}
                           onMouseLeave={e=>{ e.currentTarget.style.background=rowBg(row,ri,false); }}>
                           {cols.map((c,ci)=>(
                             <td key={ci} style={{
