@@ -3308,7 +3308,7 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
 
   const wrapRef          = useRef(null);
   const headerRef        = useRef(null);
-  const fixedHeaderRef   = useRef(null); // position:fixed 헤더 외부 wrapper
+  // fixedHeaderRef 제거 — sticky 헤더로 교체
   const ctxRef           = useRef(null);
   const thumbRef         = useRef(null);
   const trackRef         = useRef(null);
@@ -3334,62 +3334,7 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
     return () => window.removeEventListener("resize", calc);
   }, []);
 
-  // ★ fixed 헤더 위치 계산: tableContainerRef의 좌표를 추적하여 fixed 헤더에 적용
-  useEffect(() => {
-    const el   = tableContainerRef.current;
-    const hdr  = fixedHeaderRef.current;
-    if(!el || !hdr) return;
-
-    const scrollEl = el.closest(".main-content-area");
-
-    const update = () => {
-      const outerEl  = el.closest("[data-rt-outer]");
-      if(!outerEl || !hdr) return;
-      const outerRect = outerEl.getBoundingClientRect();
-
-      // ── 고정 툴바가 위에 있으면 그 높이를 topOffset으로 사용
-      // position:sticky 툴바는 outerEl 위의 형제 div이므로, main의 scrollTop과 무관하게
-      // 뷰포트에서 항상 일정한 bottom 위치를 갖는다.
-      // 가장 가까운 [data-rt-outer] 이전 sticky 형제의 bottom을 구함
-      let topOffset = 0;
-      const parent = outerEl.parentElement;
-      if(parent) {
-        for(const sib of parent.children) {
-          if(sib === outerEl) break;
-          const sibRect = sib.getBoundingClientRect();
-          if(sibRect.height > 0) topOffset = Math.max(topOffset, sibRect.bottom);
-        }
-      }
-      // topOffset: sticky 툴바의 하단 = 테이블 헤더가 붙을 최소 top
-      const minTop = topOffset;
-
-      // outer의 top이 minTop보다 작으면 minTop에 고정 (헤더가 화면 위로 사라지지 않음)
-      const clampedTop = Math.max(minTop, outerRect.top);
-
-      // outer가 화면 아래로 내려갔거나 헤더 하단이 outer 아래로 가면 숨김
-      const isAboveViewport = outerRect.bottom < minTop + VIRT_ROW_H;
-      const isBelowViewport = outerRect.top > window.innerHeight;
-      hdr.style.visibility = (isAboveViewport || isBelowViewport) ? "hidden" : "visible";
-      hdr.style.top   = clampedTop + "px";
-      hdr.style.left  = outerRect.left + "px";
-      hdr.style.width = outerRect.width + "px";
-    };
-
-    // ★ 첫 위치 계산은 rAF로 — DOM 레이아웃 완료 직후 실행 보장
-    const rafId = requestAnimationFrame(() => { update(); });
-    const ro = new ResizeObserver(update);
-    ro.observe(document.documentElement);
-    if(scrollEl) scrollEl.addEventListener("scroll", update, { passive: true });
-    window.addEventListener("resize", update, { passive: true });
-    window.addEventListener("scroll", update, { capture: true, passive: true });
-    return () => {
-      cancelAnimationFrame(rafId);
-      ro.disconnect();
-      if(scrollEl) scrollEl.removeEventListener("scroll", update);
-      window.removeEventListener("resize", update);
-      window.removeEventListener("scroll", update, true);
-    };
-  }, []);
+  // 헤더는 position:sticky 방식 — JS 위치계산 불필요
 
   // 5. 정렬 — 숫자/문자 자동 감지
   const sortedRows = useMemo(() => {
@@ -3566,19 +3511,16 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
     <div data-rt-outer="1" style={{background:"#fff",borderRadius:14,border:"1px solid #eee",
       display:"flex",flexDirection:"column",position:"relative"}}>
 
-      {/* ★ 헤더: position:fixed로 뷰포트에 고정
-           left/width/top은 tableContainerRef 위치 기반으로 JS에서 계산
+      {/* ★ 헤더: position:sticky top:0 — JS 위치계산 없이 항상 상단 고정
+           sticky 컨테이너(main-content-area)가 스크롤하면 헤더가 자동으로 상단에 고정됨
            가로 스크롤: wrapRef.scrollLeft → headerRef.scrollLeft 동기화 */}
-      <div ref={fixedHeaderRef} style={{
-        position:"fixed", zIndex:200,
+      <div style={{
+        position:"sticky", top:0, zIndex:20,
         background:"#fff",
         borderRadius:"14px 14px 0 0",
         borderBottom:"2px solid #e2e8f0",
         overflow:"hidden",
-        boxShadow:"0 2px 8px rgba(0,0,0,0.08)",
-        // ★ 초기에는 숨김 — JS update()에서 위치 계산 후 visible로 전환
-        visibility:"hidden",
-        top:0, left:0, width:"100%",
+        boxShadow:"0 2px 8px rgba(0,0,0,0.06)",
       }}>
         <div ref={headerRef} style={{overflowX:"hidden",overflowY:"hidden"}}>
           <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:totalWidth,minWidth:totalWidth}}>
@@ -3619,9 +3561,6 @@ function ResponsiveTable({cols, rows, empty="데이터가 없습니다.", onRowD
           </table>
         </div>
       </div>
-
-      {/* 헤더 높이만큼 공간 확보 (fixed 헤더가 내용을 가리지 않도록) */}
-      <div style={{height:VIRT_ROW_H, flexShrink:0, borderRadius:"14px 14px 0 0", background:"linear-gradient(180deg,#f1f5f9 0%,#e8eef4 100%)", borderBottom:"2px solid #e2e8f0"}}/>
 
       {/* 바디 — rt-wrap이 가로 스크롤 담당 */}
       <div ref={tableContainerRef}>
