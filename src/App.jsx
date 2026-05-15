@@ -2850,8 +2850,7 @@ function TrashSection({ trash, setTrash, setHw, setSw, addHistory, canEdit, curr
               style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"#94a3b8"}}>✕</button>}
           </div>
         </div>
-
-        {/* 3. 선택 일괄 액션 바 */}
+      </div>{/* 헤더 행 끝 */}
         {canEdit && selectedIds.size>0 && (
           <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",marginTop:8,
             background:"#eff6ff",borderRadius:10,border:"1px solid #bfdbfe",flexWrap:"wrap"}}>
